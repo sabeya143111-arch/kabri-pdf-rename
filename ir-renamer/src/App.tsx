@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { analyse, getWorker } from "@/lib/analyze";
 import { clearSession, loadSession, saveSession } from "@/lib/store";
 import { baseName, finalNames, hasFlag } from "@/lib/naming";
-import { STAMP_TXT, STATUS_TXT, type Item, type Settings, type UploadRow } from "@/lib/types";
+import { LEGENDS, LETTER_LABELS, WORD_LABELS, sameLabels, type Item, type Settings, type UploadRow } from "@/lib/types";
 
 interface Pending {
   id: string;
@@ -32,7 +32,7 @@ interface Pending {
 
 const DEFAULTS: Settings = {
   tpl: "{ref}-R{rev}-{status}",
-  labels: { 1: "Approved", 2: "Approved as noted", 3: "Revise and resubmit", 4: "Not approved" },
+  labels: WORD_LABELS,
   skipNamed: true,
   folders: true,
 };
@@ -73,12 +73,16 @@ export default function App() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem("irSettings");
-      if (raw) setSettings({ ...DEFAULTS, ...JSON.parse(raw) });
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (!saved.labels?.ir8797) delete saved.labels; // older saved shape
+        setSettings({ ...DEFAULTS, ...saved });
+      }
     } catch { /* ignore */ }
     loadSession().then((saved) => {
       if (saved.length) {
         savedRef.current = new Map(saved.map((i) => [i.id, i]));
-        setItems(saved);
+        setItems(saved.map((i) => ({ ...i, legend: i.legend ?? "ir8775" })));
         setUploads(saved.map((i) => ({ id: i.id, name: i.name, size: i.buf.byteLength, progress: 100 })));
         setDone(true);
         setPct(100);
@@ -124,10 +128,8 @@ export default function App() {
   };
   const step = !items.length || busy ? 1 : !ready ? 2 : 3;
   const pageRef = useRef<HTMLDivElement>(null);
-  const letters = settings.labels[1] === "A" && settings.labels[2] === "B" && settings.labels[3] === "C" && settings.labels[4] === "D";
-  const words = settings.labels[1] === DEFAULTS.labels[1] && settings.labels[2] === DEFAULTS.labels[2] && settings.labels[3] === DEFAULTS.labels[3] && settings.labels[4] === DEFAULTS.labels[4];
-  const mode: "words" | "letters" | null = letters ? "letters" : words ? "words" : null;
-  const setMode = (m: "words" | "letters") => setSettings((st) => ({ ...st, labels: m === "words" ? DEFAULTS.labels : { 1: "A", 2: "B", 3: "C", 4: "D" } }));
+  const mode: "words" | "letters" | null = sameLabels(settings.labels, LETTER_LABELS) ? "letters" : sameLabels(settings.labels, WORD_LABELS) ? "words" : null;
+  const setMode = (m: "words" | "letters") => setSettings((st) => ({ ...st, labels: m === "words" ? WORD_LABELS : LETTER_LABELS }));
 
   /* ---------- processing ---------- */
   const handleFiles = useCallback(
@@ -168,7 +170,7 @@ export default function App() {
           setRow(p.id, 38, buf.byteLength);
           let item: Item;
           if (settings.skipNamed && /^TVD-/i.test(p.name)) {
-            item = { id: p.id, name: p.name, buf, pages: 0, ref: null, rev: null, status: null, flags: [], verified: true, skipped: true };
+            item = { id: p.id, name: p.name, buf, pages: 0, legend: "ir8775", ref: null, rev: null, status: null, flags: [], verified: true, skipped: true };
           } else {
             item = await analyse(p.id, buf, p.name, {
               onPage: (c) => {
@@ -235,7 +237,7 @@ export default function App() {
   const folderOf = (it: Item) => {
     if (!settings.folders) return "";
     if (it.skipped) return "Already named/";
-    return (it.status ? DEFAULTS.labels[it.status] : "Unsorted") + "/";
+    return (it.status ? WORD_LABELS[it.legend]?.[it.status] ?? "Unsorted" : "Unsorted") + "/";
   };
   const downloadZip = async () => {
     if (!ready) return;
@@ -248,7 +250,7 @@ export default function App() {
   const downloadCsv = () => {
     const q = (v: unknown) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
     const lines = ["old_name,new_name,folder,ref,rev,decision"];
-    items.forEach((it, i) => lines.push([it.name, names[i].name ?? "", folderOf(it).replace(/\/$/, ""), it.ref ?? "", it.rev ?? "", it.status ? STATUS_TXT[it.status] : ""].map(q).join(",")));
+    items.forEach((it, i) => lines.push([it.name, names[i].name ?? "", folderOf(it).replace(/\/$/, ""), it.ref ?? "", it.rev ?? "", it.status ? LEGENDS[it.legend].text[it.status] : ""].map(q).join(",")));
     download(new Blob(["﻿" + lines.join("\n")], { type: "text/csv" }), "rename_mapping.csv");
   };
 
@@ -260,7 +262,7 @@ export default function App() {
     if (fil === "dup" && !nm.dup) return false;
     const t = q.trim().toLowerCase();
     if (!t) return true;
-    const hay = [it.name, it.ref ?? "", nm.name ?? "", it.status ? STAMP_TXT[it.status] : ""].join(" ").toLowerCase();
+    const hay = [it.name, it.ref ?? "", nm.name ?? "", it.status ? LEGENDS[it.legend].stamp[it.status] : ""].join(" ").toLowerCase();
     return t.split(/\s+/).every((w) => hay.includes(w));
   };
   const shown = items.map((it, i) => ({ it, nm: names[i], i })).filter(({ it, nm }) => matches(it, nm));

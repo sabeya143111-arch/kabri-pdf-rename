@@ -30,3 +30,13 @@ so the user's browser needs internet access.
 ## File names
 Default format `{ref}-R{rev}-{status}`, for example `TVD-...-000049-R0-Approved as noted.pdf`.
 Use the switch at the top for letter codes (A to D) or edit the labels in the "File name format" panel.
+
+## Supported forms
+
+The form type is detected automatically (you can change it per row in Review):
+
+- **Inspection Request, project 8775** – 1 Approved, 2 Approved as noted, 3 Revise and resubmit, 4 Not approved.
+- **Inspection Request, project 8797** – 1 Approved or approved as noted, 2 Accepted with comments, 3 Rejected / revise and resubmit, 4 Review not required.
+- **Sample Material Submittal** – reference is the "Submittal Nr" (revision comes from the `-R1` suffix); status 1–5 is the option enclosed in the blue box.
+
+File-name labels for each form are editable in Settings.

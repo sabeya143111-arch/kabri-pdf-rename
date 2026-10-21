@@ -5,10 +5,11 @@ const clean = (s: string) => s.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " 
 export function baseName(it: Item, st: Settings): string | null {
   if (it.skipped) return it.name.replace(/\.pdf$/i, "");
   if (!it.ref || it.status == null || it.rev == null || it.rev === "") return null;
+  if (!st.labels[it.legend]?.[it.status]) return null;
   const n = parseInt(it.rev, 10);
   const rev = Number.isNaN(n) ? it.rev : String(n);
   return clean(
-    st.tpl.replace("{ref}", it.ref).replace("{rev}", rev).replace("{status}", st.labels[it.status]),
+    st.tpl.replace("{ref}", it.ref).replace("{rev}", rev).replace("{status}", st.labels[it.legend]?.[it.status] ?? ""),
   );
 }
 

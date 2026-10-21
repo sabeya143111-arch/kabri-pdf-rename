@@ -1,7 +1,7 @@
 import { Download, Maximize2, Columns2 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import { STAMP_TXT, STATUS_TXT, type Item, type Status } from "@/lib/types";
+import { LEGENDS, type Item, type Legend, type Status } from "@/lib/types";
 import type { FinalName } from "@/lib/naming";
 
 const STAMP_CLS: Record<number, string> = {
@@ -108,14 +108,30 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload
             Decision
             <select value={it.status ?? ""} onChange={(e) => onEdit({ status: e.target.value ? (Number(e.target.value) as Status) : null })}>
               <option value="">Choose</option>
-              {([1, 2, 3, 4] as Status[]).map((k) => (
+              {LEGENDS[it.legend].options.map((k) => (
                 <option key={k} value={k}>
-                  {STATUS_TXT[k]}
+                  {LEGENDS[it.legend].text[k]}
                 </option>
               ))}
             </select>
           </label>
         </div>
+        <label className="mt-2 flex flex-col gap-1 text-[12.5px] text-mute">
+          Form type
+          <select
+            value={it.legend}
+            onChange={(e) => {
+              const legend = e.target.value as Legend;
+              onEdit({ legend, status: it.status && LEGENDS[legend].options.includes(it.status) ? it.status : null });
+            }}
+          >
+            {(Object.keys(LEGENDS) as Legend[]).map((k) => (
+              <option key={k} value={k}>
+                {LEGENDS[k].title}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {it.flags.map((f) => (
             <Tag key={f}>{f}</Tag>
@@ -138,7 +154,7 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload
             STAMP_CLS[it.status ?? 0],
           )}
         >
-          {it.status ? STAMP_TXT[it.status] : "Decision?"}
+          {it.status ? LEGENDS[it.legend].stamp[it.status] : "Decision?"}
         </span>
         {nm.name ? (
           <div data-testid="newname" className="mt-2.5 break-words font-mono text-[12.5px] font-medium leading-snug [overflow-wrap:anywhere]">{nm.name}</div>

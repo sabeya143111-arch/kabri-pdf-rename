@@ -1,12 +1,5 @@
 import { ChevronDown } from "lucide-react";
-import type { Settings, Status } from "@/lib/types";
-
-const LABELS: [Status, string][] = [
-  [1, "1 - Approved"],
-  [2, "2 - Approved as noted"],
-  [3, "3 - Revise and resubmit"],
-  [4, "4 - Not approved"],
-];
+import { LEGENDS, type Legend, type Settings, type Status } from "@/lib/types";
 
 function F({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -30,11 +23,6 @@ export function SettingsPanel({ settings, onChange, open }: { settings: Settings
           <F label="Format">
             <input type="text" className="min-w-[270px]" value={settings.tpl} onChange={(e) => onChange({ ...settings, tpl: e.target.value })} />
           </F>
-          {LABELS.map(([k, l]) => (
-            <F key={k} label={l}>
-              <input type="text" value={settings.labels[k]} onChange={(e) => onChange({ ...settings, labels: { ...settings.labels, [k]: e.target.value } })} />
-            </F>
-          ))}
           <label className="flex items-center gap-2 text-[13px]">
             <input type="checkbox" className="h-[17px] w-[17px] accent-[var(--pen)]" checked={settings.skipNamed} onChange={(e) => onChange({ ...settings, skipNamed: e.target.checked })} />
             Skip files that already start with "TVD-"
@@ -43,6 +31,25 @@ export function SettingsPanel({ settings, onChange, open }: { settings: Settings
             <input type="checkbox" className="h-[17px] w-[17px] accent-[var(--pen)]" checked={settings.folders} onChange={(e) => onChange({ ...settings, folders: e.target.checked })} />
             Put files in folders by decision (in the ZIP)
           </label>
+        </div>
+        <div className="mt-4 space-y-4">
+          {(Object.keys(LEGENDS) as Legend[]).map((g) => (
+            <div key={g}>
+              <h4 className="mb-1.5 text-sm font-semibold">{LEGENDS[g].title}</h4>
+              <div className="flex flex-wrap gap-3">
+                {LEGENDS[g].options.map((k: Status) => (
+                  <F key={k} label={LEGENDS[g].text[k]}>
+                    <input
+                      type="text"
+                      className="min-w-[220px]"
+                      value={settings.labels[g][k]}
+                      onChange={(e) => onChange({ ...settings, labels: { ...settings.labels, [g]: { ...settings.labels[g], [k]: e.target.value } } })}
+                    />
+                  </F>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
         <p className="mt-2 text-[12.5px] text-mute">
           Use <code className="font-mono">{"{ref}"}</code>, <code className="font-mono">{"{rev}"}</code> (00 becomes 0) and <code className="font-mono">{"{status}"}</code> in the format. Use the
