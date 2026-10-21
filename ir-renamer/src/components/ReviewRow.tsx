@@ -1,4 +1,4 @@
-import { Download } from "lucide-react";
+import { Download, Maximize2, Columns2 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { STAMP_TXT, STATUS_TXT, type Item, type Status } from "@/lib/types";
@@ -35,9 +35,11 @@ export interface RowProps {
   onEdit: (patch: Partial<Item>) => void;
   onVerify: (v: boolean) => void;
   onDownload: () => void;
+  onZoom: () => void;
+  onCompare?: () => void;
 }
 
-export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload }: RowProps) {
+export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload, onZoom, onCompare }: RowProps) {
   const base = "grid items-start gap-3.5 border-b border-line2 px-4 py-3.5 transition-colors duration-300 last:border-b-0";
   const tone = it.verified ? "bg-okbg/60" : flagged || nm.dup ? "bg-flagbg" : "";
 
@@ -66,8 +68,15 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload
       <div className="pt-0.5 font-mono text-[13px] text-mute">{index + 1}</div>
 
       <div className="col-start-2 lg:col-start-auto">
-        <img src={it.refImg} alt="IR reference area of the scan" className="block h-auto w-full rounded-md border border-line bg-white" />
-        <img src={it.decImg} alt="Engineer decision area of the scan" className="mt-1.5 block h-auto w-full rounded-md border border-line bg-white" />
+        <button type="button" onClick={onZoom} title="Click to see the full page" className="block w-full cursor-zoom-in rounded-md outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-pen">
+          <img src={it.refImg} alt="IR reference area of the scan" className="block h-auto w-full rounded-md border border-line bg-white transition hover:border-orange-500" />
+        </button>
+        <button type="button" onClick={onZoom} title="Click to see the full page" className="mt-1.5 block w-full cursor-zoom-in rounded-md outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-pen">
+          <img src={it.decImg} alt="Engineer decision area of the scan" className="block h-auto w-full rounded-md border border-line bg-white transition hover:border-orange-500" />
+        </button>
+        <button type="button" onClick={onZoom} className="mt-1.5 inline-flex cursor-zoom-in items-center gap-1 text-[12.5px] font-medium text-pen hover:underline">
+          <Maximize2 className="h-3.5 w-3.5" /> View full page
+        </button>
       </div>
 
       <div className="col-start-2 lg:col-start-auto">
@@ -112,6 +121,11 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload
             <Tag key={f}>{f}</Tag>
           ))}
           {nm.dup && <Tag tone="bad">Duplicate name, (2) added</Tag>}
+          {nm.dup && onCompare && (
+            <button type="button" onClick={onCompare} className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-orange-500 bg-panel px-2.5 py-0.5 text-xs font-medium text-pen hover:bg-orange-500 hover:text-white">
+              <Columns2 className="h-3.5 w-3.5" /> Compare duplicates
+            </button>
+          )}
           {!it.flags.length && nm.name && !nm.dup && <Tag tone="good">Auto-detect clean</Tag>}
         </div>
       </div>

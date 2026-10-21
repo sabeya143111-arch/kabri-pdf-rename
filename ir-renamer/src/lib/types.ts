@@ -19,6 +19,7 @@ export interface Settings {
   tpl: string;
   labels: Record<Status, string>;
   skipNamed: boolean;
+  folders: boolean;
 }
 
 export interface UploadRow {

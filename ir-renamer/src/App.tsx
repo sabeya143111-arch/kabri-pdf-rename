@@ -8,7 +8,10 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { ReviewRow } from "@/components/ReviewRow";
 import { Dock } from "@/components/Dock";
 import NumberFlow from "@number-flow/react";
-import { CheckCheck } from "lucide-react";
+import { CheckCheck, Search, TriangleAlert } from "lucide-react";
+import { PageViewer, type ViewItem } from "@/components/PageViewer";
+import { findMissing } from "@/lib/checks";
+import { FolderShelf } from "@/components/FolderShelf";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { TimelineContent } from "@/components/ui/timeline-animation";
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal";
@@ -16,8 +19,8 @@ import { PillSwitch } from "@/components/PillSwitch";
 import { cn } from "@/lib/utils";
 import { analyse, getWorker } from "@/lib/analyze";
 import { clearSession, loadSession, saveSession } from "@/lib/store";
-import { finalNames, hasFlag } from "@/lib/naming";
-import { STATUS_TXT, type Item, type Settings, type UploadRow } from "@/lib/types";
+import { baseName, finalNames, hasFlag } from "@/lib/naming";
+import { STAMP_TXT, STATUS_TXT, type Item, type Settings, type UploadRow } from "@/lib/types";
 
 interface Pending {
   id: string;
@@ -29,6 +32,7 @@ const DEFAULTS: Settings = {
   tpl: "{ref}-R{rev}-{status}",
   labels: { 1: "Approved", 2: "Approved as noted", 3: "Revise and resubmit", 4: "Not approved" },
   skipNamed: true,
+  folders: true,
 };
 
 let uid = 0;
@@ -50,7 +54,12 @@ export default function App() {
   const [done, setDone] = useState(false);
   const [pct, setPct] = useState(0);
   const [statusText, setStatusText] = useState("");
-  const [onlyFlag, setOnlyFlag] = useState(false);
+  type Filter = "all" | "1" | "2" | "rev" | "check" | "dup";
+  const [fil, setFil] = useState<Filter>("all");
+  const [q, setQ] = useState("");
+  const [viewer, setViewer] = useState<{ heading: string; items: ViewItem[] } | null>(null);
+  const closeViewer = useCallback(() => setViewer(null), []);
+  const onlyFlag = fil === "check";
   const [hasPage, setHasPage] = useState(false);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const [restored, setRestored] = useState(false);
@@ -191,7 +200,8 @@ export default function App() {
     setPct(0);
     setStatusText("");
     setHasPage(false);
-    setOnlyFlag(false);
+    setFil("all");
+    setQ("");
     savedRef.current = new Map();
     clearSession();
     previewRef.current?.getContext("2d")?.clearRect(0, 0, 296, 418);
@@ -216,22 +226,55 @@ export default function App() {
   };
 
   /* ---------- outputs ---------- */
+  const folderOf = (it: Item) => {
+    if (!settings.folders) return "";
+    if (it.skipped) return "Already named/";
+    return (it.status ? DEFAULTS.labels[it.status] : "Unsorted") + "/";
+  };
   const downloadZip = async () => {
     if (!ready) return;
     const z = new JSZip();
-    items.forEach((it, i) => z.file(names[i].name!, it.buf));
+    items.forEach((it, i) => z.file(folderOf(it) + names[i].name!, it.buf));
     const blob = await z.generateAsync({ type: "blob", compression: "STORE" });
     download(blob, "renamed_pdfs.zip");
     setStatusText(`ZIP downloaded: ${items.length} files.`);
   };
   const downloadCsv = () => {
     const q = (v: unknown) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-    const lines = ["old_name,new_name,ref,rev,decision"];
-    items.forEach((it, i) => lines.push([it.name, names[i].name ?? "", it.ref ?? "", it.rev ?? "", it.status ? STATUS_TXT[it.status] : ""].map(q).join(",")));
+    const lines = ["old_name,new_name,folder,ref,rev,decision"];
+    items.forEach((it, i) => lines.push([it.name, names[i].name ?? "", folderOf(it).replace(/\/$/, ""), it.ref ?? "", it.rev ?? "", it.status ? STATUS_TXT[it.status] : ""].map(q).join(",")));
     download(new Blob(["﻿" + lines.join("\n")], { type: "text/csv" }), "rename_mapping.csv");
   };
 
-  const shown = items.map((it, i) => ({ it, nm: names[i], i })).filter(({ it, nm }) => !onlyFlag || hasFlag(it, nm) || nm.dup);
+  const matches = (it: Item, nm: (typeof names)[number]) => {
+    if (fil === "1" && !(!it.skipped && it.status === 1)) return false;
+    if (fil === "2" && !(!it.skipped && it.status === 2)) return false;
+    if (fil === "rev" && !(!it.skipped && (it.status ?? 0) >= 3)) return false;
+    if (fil === "check" && !(hasFlag(it, nm) || nm.dup)) return false;
+    if (fil === "dup" && !nm.dup) return false;
+    const t = q.trim().toLowerCase();
+    if (!t) return true;
+    const hay = [it.name, it.ref ?? "", nm.name ?? "", it.status ? STAMP_TXT[it.status] : ""].join(" ").toLowerCase();
+    return t.split(/\s+/).every((w) => hay.includes(w));
+  };
+  const shown = items.map((it, i) => ({ it, nm: names[i], i })).filter(({ it, nm }) => matches(it, nm));
+  const missing = useMemo(() => findMissing(items), [items]);
+  const dupCount = names.filter((n) => n.dup).length;
+  const chips: { k: Filter; label: string; n: number }[] = [
+    { k: "all", label: "All", n: items.length },
+    { k: "1", label: "Approved", n: stats.ok },
+    { k: "2", label: "Approved as noted", n: stats.note },
+    { k: "rev", label: "Revise / Not approved", n: stats.rev },
+    { k: "check", label: "Need a check", n: items.filter((it, i) => hasFlag(it, names[i]) || names[i].dup).length },
+    { k: "dup", label: "Duplicates", n: dupCount },
+  ];
+  const openPage = (it: Item) => setViewer({ heading: "Full page 1 of the scan", items: [{ id: it.id, title: it.name, buf: it.buf }] });
+  const compare = (it: Item, i: number) => {
+    const key = baseName(it, settings);
+    const group = items.filter((o) => baseName(o, settings) === key);
+    void i;
+    setViewer({ heading: `Compare duplicates: ${group.length} scans with the same name`, items: group.map((o) => ({ id: o.id, title: o.name, buf: o.buf })) });
+  };
   const sample = names.find((n) => n.name)?.name;
 
   const revealVariants = {
@@ -349,7 +392,7 @@ export default function App() {
                 <button type="button" className={cn(primaryBtn, "mb-3")} onClick={verifyClean} disabled={!items.length || busy}>
                   Verify all clean rows
                 </button>
-                <button type="button" className={cn(ghostBtn, "mb-6")} onClick={() => setOnlyFlag((v) => !v)} disabled={!items.length}>
+                <button type="button" className={cn(ghostBtn, "mb-6")} onClick={() => setFil((f) => (f === "check" ? "all" : "check"))} disabled={!items.length}>
                   {onlyFlag ? "Show all rows" : "Show only rows to check"}
                 </button>
                 <div className="space-y-3 border-t pt-4">
@@ -406,6 +449,12 @@ export default function App() {
 
         <SettingsPanel settings={settings} onChange={setSettings} />
 
+        <FolderShelf
+          entries={items.map((it, i) => ({ it, nm: names[i] }))}
+          folders={settings.folders}
+          onDownload={({ it, nm }) => nm.name && download(new Blob([it.buf], { type: "application/pdf" }), nm.name)}
+        />
+
         {items.length > 0 && (
           <Card className="mt-4 overflow-hidden">
             <div className="flex flex-wrap items-center gap-2.5 border-b px-4 py-3">
@@ -414,11 +463,59 @@ export default function App() {
                 {items.length} files · {flaggedLeft} still to check
               </span>
             </div>
+            {missing.length > 0 && (
+              <div className="border-b bg-flagbg px-4 py-3 text-[13px]" data-testid="missing">
+                <div className="mb-1 flex items-center gap-2 font-semibold text-revise">
+                  <TriangleAlert className="h-4 w-4" /> IR numbers not found in this batch
+                </div>
+                <ul className="space-y-0.5 text-ink">
+                  {missing.map((g) => (
+                    <li key={g.prefix}>
+                      <span className="font-mono font-medium">{g.kind}</span>:{" "}
+                      {g.tooBig ? (
+                        <span>big gaps between numbers, so check that every IR ref was read correctly</span>
+                      ) : (
+                        <span className="font-mono">{g.missing.join(", ")}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-xs text-mute">These numbers sit between IRs you uploaded. If those IRs exist, a scan may be missing, or one ref was read wrong.</p>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+              <div className="relative min-w-[240px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mute" />
+                <input
+                  type="search"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search by IR number, file name or decision"
+                  aria-label="Search rows"
+                  className="w-full !pl-9"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {chips.map((c) => (
+                  <button
+                    key={c.k}
+                    type="button"
+                    onClick={() => setFil(c.k)}
+                    className={cn(
+                      "cursor-pointer rounded-full border px-3 py-1 text-[12.5px] font-medium transition",
+                      fil === c.k ? "border-orange-500 bg-orange-500 text-white" : "bg-panel text-ink hover:border-orange-500",
+                    )}
+                  >
+                    {c.label} <span className={fil === c.k ? "opacity-90" : "text-mute"}>{c.n}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <div data-testid="rows">
               {shown.map(({ it, nm, i }) => (
-                <ReviewRow key={it.id} it={it} nm={nm} index={i} flagged={hasFlag(it, nm)} onEdit={(p) => edit(it.id, p)} onVerify={(v) => setVerified(it.id, v)} onDownload={() => nm.name && download(new Blob([it.buf], { type: "application/pdf" }), nm.name)} />
+                <ReviewRow key={it.id} it={it} nm={nm} index={i} flagged={hasFlag(it, nm)} onEdit={(p) => edit(it.id, p)} onVerify={(v) => setVerified(it.id, v)} onDownload={() => nm.name && download(new Blob([it.buf], { type: "application/pdf" }), nm.name)} onZoom={() => openPage(it)} onCompare={nm.dup ? () => compare(it, i) : undefined} />
               ))}
-              {!shown.length && <div className="p-8 text-center text-mute">No rows left to check.</div>}
+              {!shown.length && <div className="p-8 text-center text-mute">No rows match. Clear the search or pick "All".</div>}
             </div>
           </Card>
         )}
@@ -426,6 +523,7 @@ export default function App() {
           {statusText}
         </div>
       </div>
+      <PageViewer items={viewer?.items ?? null} heading={viewer?.heading ?? ""} onClose={closeViewer} />
       <Dock show={items.length > 0} verified={verified} total={items.length} ready={ready} busy={busy} onZip={downloadZip} />
     </>
   );

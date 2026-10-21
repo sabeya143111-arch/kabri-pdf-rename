@@ -39,6 +39,10 @@ export function SettingsPanel({ settings, onChange }: { settings: Settings; onCh
             <input type="checkbox" className="h-[17px] w-[17px] accent-[var(--pen)]" checked={settings.skipNamed} onChange={(e) => onChange({ ...settings, skipNamed: e.target.checked })} />
             Skip files that already start with "TVD-"
           </label>
+          <label className="flex items-center gap-2 text-[13px]">
+            <input type="checkbox" className="h-[17px] w-[17px] accent-[var(--pen)]" checked={settings.folders} onChange={(e) => onChange({ ...settings, folders: e.target.checked })} />
+            Put files in folders by decision (in the ZIP)
+          </label>
         </div>
         <p className="mt-2 text-[12.5px] text-mute">
           Use <code className="font-mono">{"{ref}"}</code>, <code className="font-mono">{"{rev}"}</code> (00 becomes 0) and <code className="font-mono">{"{status}"}</code> in the format. Use the
