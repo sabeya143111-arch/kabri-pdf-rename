@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+:root {
+  --ground:#e9ecef; --panel:#ffffff; --ink:#13203a; --mute:#5d6a82; --line:#d5dbe5; --line2:#e7ebf1;
+  --hoard:#f4b400; --pen:#1f5fd1;
+  --ok:#17803f; --note:#1f5fd1; --revise:#b86b00; --bad:#c42b33;
+  --okbg:#e3f4ea; --notebg:#e4edff; --revisebg:#fff0d6; --badbg:#fde6e7; --flagbg:#fff8e1;
+  --shadow:0 1px 0 rgba(19,32,58,.04),0 6px 18px -10px rgba(19,32,58,.25);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:#0d1424; --panel:#151e33; --ink:#e8edf7; --mute:#93a0ba; --line:#28344f; --line2:#1f2a43;
+    --okbg:#12301f; --notebg:#142349; --revisebg:#3a2a0b; --badbg:#3a1518; --flagbg:#2e2711;
+    --ok:#4fd08a; --note:#7aa5ff; --revise:#f0b04a; --bad:#ff7a82; --pen:#6b9cff;
+    --shadow:0 1px 0 rgba(0,0,0,.3),0 8px 22px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:#0d1424; --panel:#151e33; --ink:#e8edf7; --mute:#93a0ba; --line:#28344f; --line2:#1f2a43;
+  --okbg:#12301f; --notebg:#142349; --revisebg:#3a2a0b; --badbg:#3a1518; --flagbg:#2e2711;
+  --ok:#4fd08a; --note:#7aa5ff; --revise:#f0b04a; --bad:#ff7a82; --pen:#6b9cff;
+  --shadow:0 1px 0 rgba(0,0,0,.3),0 8px 22px -12px rgba(0,0,0,.7);
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-panel: var(--panel);
+  --color-ink: var(--ink);
+  --color-mute: var(--mute);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-hoard: var(--hoard);
+  --color-pen: var(--pen);
+  --color-ok: var(--ok);
+  --color-note: var(--note);
+  --color-revise: var(--revise);
+  --color-bad: var(--bad);
+  --color-okbg: var(--okbg);
+  --color-revisebg: var(--revisebg);
+  --color-badbg: var(--badbg);
+  --color-flagbg: var(--flagbg);
+  --font-display: "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --shadow-panel: var(--shadow);
+  --animate-scan: scan 1.5s cubic-bezier(.5,0,.5,1) infinite;
+  --animate-flow: flow 1.2s linear infinite;
+  --animate-nudge: nudge 1.6s ease-in-out 2;
+  --animate-bounce-drop: dzbounce 1.3s ease-in-out infinite;
+  --animate-glow-slow: dzglow 1.8s ease-in-out infinite;
+  --animate-spin-fast: spin .7s linear infinite;
+}
+
+@keyframes scan { 0% { top: -34px } 100% { top: 100% } }
+@keyframes flow { to { background-position: -200% 0 } }
+@keyframes nudge { 0%,100% { transform: none } 40% { transform: translateY(-4px) } 60% { transform: translateY(0) } }
+@keyframes dzbounce { 0%,100% { transform: translateY(-5px) } 50% { transform: translateY(2px) } }
+@keyframes dzglow { 0%,100% { opacity: .45; transform: scale(.92) } 50% { opacity: 1; transform: scale(1.08) } }
+
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 14.5px/1.5 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, .font-display { letter-spacing: -0.02em; }
+:focus-visible { outline: 3px solid var(--pen); outline-offset: 2px; border-radius: 6px; }
+
+input[type="text"], select {
+  font: inherit; color: var(--ink); padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); transition: border-color .2s, box-shadow .2s;
+}
+input[type="text"]:focus, select:focus {
+  border-color: var(--pen); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pen) 22%, transparent); outline: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
