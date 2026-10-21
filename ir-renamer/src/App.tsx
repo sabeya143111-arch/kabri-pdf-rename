@@ -15,6 +15,7 @@ import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal";
 import { PillSwitch } from "@/components/PillSwitch";
 import { cn } from "@/lib/utils";
 import { analyse, getWorker } from "@/lib/analyze";
+import { clearSession, loadSession, saveSession } from "@/lib/store";
 import { finalNames, hasFlag } from "@/lib/naming";
 import { STATUS_TXT, type Item, type Settings, type UploadRow } from "@/lib/types";
 
@@ -52,6 +53,34 @@ export default function App() {
   const [onlyFlag, setOnlyFlag] = useState(false);
   const [hasPage, setHasPage] = useState(false);
   const previewRef = useRef<HTMLCanvasElement>(null);
+  const [restored, setRestored] = useState(false);
+  const savedRef = useRef<Map<string, Item>>(new Map());
+
+  /* ---------- keep the session across page refreshes ---------- */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("irSettings");
+      if (raw) setSettings({ ...DEFAULTS, ...JSON.parse(raw) });
+    } catch { /* ignore */ }
+    loadSession().then((saved) => {
+      if (saved.length) {
+        savedRef.current = new Map(saved.map((i) => [i.id, i]));
+        setItems(saved);
+        setUploads(saved.map((i) => ({ id: i.id, name: i.name, size: i.buf.byteLength, progress: 100 })));
+        setDone(true);
+        setPct(100);
+        setStatusText(`Restored ${saved.length} files from your last session.`);
+      }
+      setRestored(true);
+    });
+  }, []);
+  useEffect(() => {
+    if (!restored || busy) return;
+    saveSession(items, savedRef.current).then((m) => (savedRef.current = m));
+  }, [items, restored, busy]);
+  useEffect(() => {
+    try { localStorage.setItem("irSettings", JSON.stringify(settings)); } catch { /* ignore */ }
+  }, [settings]);
 
   /* ---------- theme ---------- */
   useEffect(() => {
@@ -163,6 +192,8 @@ export default function App() {
     setStatusText("");
     setHasPage(false);
     setOnlyFlag(false);
+    savedRef.current = new Map();
+    clearSession();
     previewRef.current?.getContext("2d")?.clearRect(0, 0, 296, 418);
   };
   const removeOne = (id: string) => {
@@ -214,7 +245,7 @@ export default function App() {
     ) : step > n ? (
       <span className="rounded-full bg-okbg px-3 py-1 text-sm font-medium text-ok">Done</span>
     ) : null;
-  const cardCls = (n: number) => cn("relative border bg-card", step === n && "bg-orange-50 ring-2 ring-orange-500 dark:bg-[#1f1710]");
+  const cardCls = (n: number) => cn("relative border bg-card", step === n && "bg-tint ring-2 ring-orange-500");
   const primaryBtn =
     "w-full cursor-pointer rounded-xl border border-orange-400 bg-gradient-to-t from-orange-500 to-orange-600 p-4 text-lg font-medium text-white shadow-lg shadow-orange-500/30 transition active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
   const ghostBtn =
@@ -363,6 +394,7 @@ export default function App() {
                   <h4 className="text-base font-semibold">Name example</h4>
                   <p className="break-all font-mono text-[12.5px] text-mute">{sample ?? "TVD-8775-KIC-PAR-WIR-ES-IRR-000049-R0-Approved as noted.pdf"}</p>
                   <ul className="space-y-2">
+                    <Feature>Need just one file? Use "Download this PDF" on its row below</Feature>
                     <Feature>Your PDFs are only renamed, never changed</Feature>
                     <Feature>The CSV lists every old and new name</Feature>
                   </ul>
@@ -384,7 +416,7 @@ export default function App() {
             </div>
             <div data-testid="rows">
               {shown.map(({ it, nm, i }) => (
-                <ReviewRow key={it.id} it={it} nm={nm} index={i} flagged={hasFlag(it, nm)} onEdit={(p) => edit(it.id, p)} onVerify={(v) => setVerified(it.id, v)} />
+                <ReviewRow key={it.id} it={it} nm={nm} index={i} flagged={hasFlag(it, nm)} onEdit={(p) => edit(it.id, p)} onVerify={(v) => setVerified(it.id, v)} onDownload={() => nm.name && download(new Blob([it.buf], { type: "application/pdf" }), nm.name)} />
               ))}
               {!shown.length && <div className="p-8 text-center text-mute">No rows left to check.</div>}
             </div>

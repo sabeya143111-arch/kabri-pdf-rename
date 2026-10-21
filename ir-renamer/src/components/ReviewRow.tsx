@@ -1,3 +1,4 @@
+import { Download } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { STAMP_TXT, STATUS_TXT, type Item, type Status } from "@/lib/types";
@@ -33,9 +34,10 @@ export interface RowProps {
   flagged: boolean;
   onEdit: (patch: Partial<Item>) => void;
   onVerify: (v: boolean) => void;
+  onDownload: () => void;
 }
 
-export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify }: RowProps) {
+export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload }: RowProps) {
   const base = "grid items-start gap-3.5 border-b border-line2 px-4 py-3.5 transition-colors duration-300 last:border-b-0";
   const tone = it.verified ? "bg-okbg/60" : flagged || nm.dup ? "bg-flagbg" : "";
 
@@ -46,6 +48,14 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify }: RowProps
         <div>
           <div className="mb-2 break-all text-xs text-mute">{it.name}</div>
           <Tag tone="good">Already named, kept as-is</Tag>
+          <div><button
+          type="button"
+          onClick={onDownload}
+          disabled={!nm.name}
+          className="mt-2.5 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-orange-500 bg-panel px-3 py-1.5 text-[13px] font-medium text-pen transition hover:bg-orange-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Download className="h-4 w-4" /> Download this PDF
+        </button></div>
         </div>
       </div>
     );
@@ -121,6 +131,14 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify }: RowProps
         ) : (
           <div className="mt-2.5 font-medium text-bad">Cannot build a name: fill in ref, rev and decision</div>
         )}
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={!nm.name}
+          className="mt-2.5 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-orange-500 bg-panel px-3 py-1.5 text-[13px] font-medium text-pen transition hover:bg-orange-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Download className="h-4 w-4" /> Download this PDF
+        </button>
       </div>
 
       <label className="col-start-2 text-center lg:col-start-auto">
