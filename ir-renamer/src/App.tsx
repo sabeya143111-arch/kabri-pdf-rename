@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import FileUpload from "@/components/ui/file-upload";
-import { Header } from "@/components/Header";
+import { Sidebar, type View } from "@/components/Sidebar";
 import { LiveSheet } from "@/components/LiveSheet";
 import { ProgressPanel } from "@/components/ProgressPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
@@ -15,6 +15,8 @@ import { FolderShelf } from "@/components/FolderShelf";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { TimelineContent } from "@/components/ui/timeline-animation";
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal";
+import { LayoutGroup, motion } from "motion/react";
+import { TextRotate } from "@/components/ui/text-rotate";
 import { PillSwitch } from "@/components/PillSwitch";
 import { cn } from "@/lib/utils";
 import { analyse, getWorker } from "@/lib/analyze";
@@ -62,6 +64,8 @@ export default function App() {
   const onlyFlag = fil === "check";
   const [hasPage, setHasPage] = useState(false);
   const previewRef = useRef<HTMLCanvasElement>(null);
+  const [view, setView] = useState<View>("upload");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [restored, setRestored] = useState(false);
   const savedRef = useRef<Map<string, Item>>(new Map());
 
@@ -79,6 +83,7 @@ export default function App() {
         setDone(true);
         setPct(100);
         setStatusText(`Restored ${saved.length} files from your last session.`);
+        setView("review");
       }
       setRestored(true);
     });
@@ -182,6 +187,7 @@ export default function App() {
         setPct(100);
         setStatusText(`Done: ${pending.length} files. Check each row below, then download.`);
         setDone(true);
+        setView("review");
       } catch (e) {
         setStatusText("Error: " + (e instanceof Error ? e.message : String(e)));
         console.error(e);
@@ -302,11 +308,23 @@ export default function App() {
     </li>
   );
 
+  const empty = (what: string) => (
+    <Card className="p-10 text-center">
+      <p className="mb-4 text-lg font-medium">{what}</p>
+      <button type="button" onClick={() => setView("upload")} className="cursor-pointer rounded-xl border border-orange-400 bg-gradient-to-t from-orange-500 to-orange-600 px-5 py-2.5 font-medium text-white shadow-lg shadow-orange-500/30">
+        Go to Upload
+      </button>
+    </Card>
+  );
+
   return (
     <>
-      <Header onTheme={toggleTheme} />
-      <div ref={pageRef} className="relative mx-auto min-h-screen max-w-7xl px-4 pb-32 pt-14">
-        <article className="mb-6 max-w-2xl space-y-4 text-left">
+      <Sidebar view={view} onView={setView} total={items.length} verified={verified} flagged={flaggedLeft} ready={ready} busy={busy} open={menuOpen} onOpen={setMenuOpen} onZip={downloadZip} onTheme={toggleTheme} />
+      <main ref={pageRef} className="relative min-h-screen px-4 pb-28 pt-6 lg:pb-12 lg:pl-[304px] lg:pr-8 lg:pt-10">
+        <div className="mx-auto max-w-6xl">
+          {view === "upload" && (
+            <div key="upload">
+              <article className="mb-6 max-w-2xl space-y-4 text-left">
           <h2 className="mb-4 text-4xl font-medium capitalize md:text-6xl">
             <VerticalCutReveal
               splitBy="words"
@@ -319,11 +337,32 @@ export default function App() {
               Rename every inspection PDF the right way
             </VerticalCutReveal>
           </h2>
-          <TimelineContent as="p" animationNum={0} timelineRef={pageRef} customVariants={revealVariants} className="w-[85%] text-sm text-mute md:text-base">
+          <TimelineContent as="div" animationNum={0} timelineRef={pageRef} customVariants={revealVariants}>
+            <LayoutGroup>
+              <motion.p className="flex items-center gap-2 whitespace-pre text-xl font-light text-ink sm:text-2xl md:text-3xl" layout>
+                <motion.span layout transition={{ type: "spring", damping: 30, stiffness: 400 }}>
+                  Every scan,{" "}
+                </motion.span>
+                <TextRotate
+                  texts={["read automatically", "named correctly", "sorted by decision", "ready to ZIP"]}
+                  mainClassName="overflow-hidden rounded-lg bg-orange-500 px-2.5 py-0.5 font-medium text-white sm:px-3 sm:py-1"
+                  staggerFrom="last"
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "-120%" }}
+                  staggerDuration={0.02}
+                  splitLevelClassName="overflow-hidden pb-0.5"
+                  transition={{ type: "spring", damping: 30, stiffness: 400 }}
+                  rotationInterval={2600}
+                />
+              </motion.p>
+            </LayoutGroup>
+          </TimelineContent>
+          <TimelineContent as="p" animationNum={1} timelineRef={pageRef} customVariants={revealVariants} className="w-[85%] text-sm text-mute md:text-base">
             Drop your Inspection Request scans. The app reads the IR reference, the revision and the engineer's decision from each one, so all you do is confirm and
             download.
           </TimelineContent>
-          <TimelineContent as="div" animationNum={1} timelineRef={pageRef} customVariants={revealVariants}>
+          <TimelineContent as="div" animationNum={2} timelineRef={pageRef} customVariants={revealVariants}>
             <PillSwitch
               className="w-fit"
               layoutId="status-style"
@@ -336,10 +375,9 @@ export default function App() {
             />
           </TimelineContent>
         </article>
-
-        <div className="grid gap-4 py-4 md:grid-cols-3">
-          {/* 1. Upload */}
-          <TimelineContent as="div" animationNum={2} timelineRef={pageRef} customVariants={revealVariants}>
+              <div className="grid gap-4 py-4">
+{/* 1. Upload */}
+          <TimelineContent as="div" animationNum={3} timelineRef={pageRef} customVariants={revealVariants}>
             <Card className={cardCls(1)}>
               <CardHeader className="text-left">
                 <div className="flex justify-between">
@@ -355,9 +393,17 @@ export default function App() {
               </CardContent>
             </Card>
           </TimelineContent>
+              </div>
+            </div>
+          )}
 
-          {/* 2. Check */}
-          <TimelineContent as="div" animationNum={3} timelineRef={pageRef} customVariants={revealVariants}>
+          {view === "review" && (
+            <div key="review" className="space-y-4">
+              <h2 className="text-3xl font-semibold md:text-4xl">Review files</h2>
+              {items.length ? (
+                <>
+{/* 2. Check */}
+          <TimelineContent as="div" animationNum={4} timelineRef={pageRef} customVariants={revealVariants}>
             <Card className={cardCls(2)}>
               <CardHeader className="text-left">
                 <div className="flex justify-between">
@@ -373,7 +419,7 @@ export default function App() {
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="mb-5 grid grid-cols-2 gap-2.5">
+                <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                   {[
                     { k: "ok", label: "Approved", bar: "bg-ok", v: stats.ok },
                     { k: "note", label: "Approved as noted", bar: "bg-note", v: stats.note },
@@ -389,15 +435,17 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-                <button type="button" className={cn(primaryBtn, "mb-3")} onClick={verifyClean} disabled={!items.length || busy}>
+                <div className="mb-6 grid gap-3 sm:grid-cols-2">
+                  <button type="button" className={primaryBtn} onClick={verifyClean} disabled={!items.length || busy}>
                   Verify all clean rows
                 </button>
-                <button type="button" className={cn(ghostBtn, "mb-6")} onClick={() => setFil((f) => (f === "check" ? "all" : "check"))} disabled={!items.length}>
+                <button type="button" className={ghostBtn} onClick={() => setFil((f) => (f === "check" ? "all" : "check"))} disabled={!items.length}>
                   {onlyFlag ? "Show all rows" : "Show only rows to check"}
                 </button>
+                </div>
                 <div className="space-y-3 border-t pt-4">
                   <h4 className="text-base font-semibold">What to look at</h4>
-                  <ul className="space-y-2">
+                  <ul className="grid gap-2 sm:grid-cols-3">
                     <Feature>The red box marks the option the app detected</Feature>
                     <Feature>Fix any wrong value right inside its row</Feature>
                     <Feature>Duplicate names get (2) added automatically</Feature>
@@ -406,57 +454,7 @@ export default function App() {
               </CardContent>
             </Card>
           </TimelineContent>
-
-          {/* 3. Download */}
-          <TimelineContent as="div" animationNum={4} timelineRef={pageRef} customVariants={revealVariants}>
-            <Card className={cardCls(3)}>
-              <CardHeader className="text-left">
-                <div className="flex justify-between">
-                  <h3 className="mb-2 text-2xl font-semibold">3. Download</h3>
-                  {stepBadge(3)}
-                </div>
-                <p className="mb-2 text-sm text-mute">The download unlocks once every row is verified.</p>
-                <div className="flex items-baseline">
-                  <span className="text-4xl font-semibold">
-                    <NumberFlow value={verified} className="text-4xl font-semibold" />
-                  </span>
-                  <span className="ml-1 text-mute">/ {items.length} verified</span>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="mb-5 h-2 overflow-hidden rounded-full bg-line2">
-                  <div className="h-full rounded-full bg-ok transition-[width] duration-500" style={{ width: `${items.length ? (verified / items.length) * 100 : 0}%` }} />
-                </div>
-                <button type="button" className={cn(primaryBtn, "mb-3")} onClick={downloadZip} disabled={!ready || busy}>
-                  Download renamed ZIP
-                </button>
-                <button type="button" className={cn(ghostBtn, "mb-6")} onClick={downloadCsv} disabled={!items.length}>
-                  Download mapping CSV
-                </button>
-                <div className="space-y-3 border-t pt-4">
-                  <h4 className="text-base font-semibold">Name example</h4>
-                  <p className="break-all font-mono text-[12.5px] text-mute">{sample ?? "TVD-8775-KIC-PAR-WIR-ES-IRR-000049-R0-Approved as noted.pdf"}</p>
-                  <ul className="space-y-2">
-                    <Feature>Need just one file? Use "Download this PDF" on its row below</Feature>
-                    <Feature>Your PDFs are only renamed, never changed</Feature>
-                    <Feature>The CSV lists every old and new name</Feature>
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
-          </TimelineContent>
-        </div>
-
-        <SettingsPanel settings={settings} onChange={setSettings} />
-
-        <FolderShelf
-          entries={items.map((it, i) => ({ it, nm: names[i] }))}
-          folders={settings.folders}
-          onDownload={({ it, nm }) => nm.name && download(new Blob([it.buf], { type: "application/pdf" }), nm.name)}
-        />
-
-        {items.length > 0 && (
-          <Card className="mt-4 overflow-hidden">
+          <Card className="overflow-hidden">
             <div className="flex flex-wrap items-center gap-2.5 border-b px-4 py-3">
               <h2 className="mr-auto text-lg font-semibold">Review every file</h2>
               <span className="text-[12.5px] text-mute">
@@ -518,13 +516,85 @@ export default function App() {
               {!shown.length && <div className="p-8 text-center text-mute">No rows match. Clear the search or pick "All".</div>}
             </div>
           </Card>
-        )}
+                </>
+              ) : (
+                empty("No files yet. Upload your scans first.")
+              )}
+            </div>
+          )}
+
+          {view === "download" && (
+            <div key="download" className="space-y-4">
+              <h2 className="text-3xl font-semibold md:text-4xl">Download</h2>
+              {items.length ? (
+                <>
+{/* 3. Download */}
+          <TimelineContent as="div" animationNum={5} timelineRef={pageRef} customVariants={revealVariants}>
+            <Card className={cardCls(3)}>
+              <CardHeader className="text-left">
+                <div className="flex justify-between">
+                  <h3 className="mb-2 text-2xl font-semibold">3. Download</h3>
+                  {stepBadge(3)}
+                </div>
+                <p className="mb-2 text-sm text-mute">The download unlocks once every row is verified.</p>
+                <div className="flex items-baseline">
+                  <span className="text-4xl font-semibold">
+                    <NumberFlow value={verified} className="text-4xl font-semibold" />
+                  </span>
+                  <span className="ml-1 text-mute">/ {items.length} verified</span>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="mb-5 h-2 overflow-hidden rounded-full bg-line2">
+                  <div className="h-full rounded-full bg-ok transition-[width] duration-500" style={{ width: `${items.length ? (verified / items.length) * 100 : 0}%` }} />
+                </div>
+                <div className="mb-6 grid gap-3 sm:grid-cols-2">
+                  <button type="button" className={primaryBtn} onClick={downloadZip} disabled={!ready || busy}>
+                  Download renamed ZIP
+                </button>
+                <button type="button" className={ghostBtn} onClick={downloadCsv} disabled={!items.length}>
+                  Download mapping CSV
+                </button>
+                </div>
+                <div className="space-y-3 border-t pt-4">
+                  <h4 className="text-base font-semibold">Name example</h4>
+                  <p className="break-all font-mono text-[12.5px] text-mute">{sample ?? "TVD-8775-KIC-PAR-WIR-ES-IRR-000049-R0-Approved as noted.pdf"}</p>
+                  <ul className="space-y-2">
+                    <Feature>Need just one file? Use "Download this PDF" on its row in Review files</Feature>
+                    <Feature>Your PDFs are only renamed, never changed</Feature>
+                    <Feature>The CSV lists every old and new name</Feature>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          </TimelineContent>
+                  <FolderShelf
+                    entries={items.map((it, i) => ({ it, nm: names[i] }))}
+                    folders={settings.folders}
+                    onDownload={({ it, nm }) => nm.name && download(new Blob([it.buf], { type: "application/pdf" }), nm.name)}
+                  />
+                </>
+              ) : (
+                empty("Nothing to download yet. Upload your scans first.")
+              )}
+            </div>
+          )}
+
+          {view === "settings" && (
+            <div key="settings" className="space-y-4">
+              <h2 className="text-3xl font-semibold md:text-4xl">Settings</h2>
+              <SettingsPanel settings={settings} onChange={setSettings} open />
+            </div>
+          )}
+        </div>
         <div className="sr-only" id="status" aria-live="polite">
           {statusText}
         </div>
+      </main>
+      <div className="lg:hidden">
+        <Dock show={items.length > 0} verified={verified} total={items.length} ready={ready} busy={busy} onZip={downloadZip} />
       </div>
       <PageViewer items={viewer?.items ?? null} heading={viewer?.heading ?? ""} onClose={closeViewer} />
-      <Dock show={items.length > 0} verified={verified} total={items.length} ready={ready} busy={busy} onZip={downloadZip} />
     </>
   );
 }

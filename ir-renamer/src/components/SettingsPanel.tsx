@@ -17,9 +17,9 @@ function F({ label, children }: { label: string; children: React.ReactNode }) {
   );
 }
 
-export function SettingsPanel({ settings, onChange }: { settings: Settings; onChange: (s: Settings) => void }) {
+export function SettingsPanel({ settings, onChange, open }: { settings: Settings; onChange: (s: Settings) => void; open?: boolean }) {
   return (
-    <details className="group mt-4 rounded-lg border bg-card shadow-sm">
+    <details open={open} className="group rounded-lg border bg-card shadow-sm">
       <summary className="flex cursor-pointer list-none items-center gap-2.5 px-5 py-3.5 font-semibold [&::-webkit-details-marker]:hidden">
         File name format
         <span className="font-mono text-[12.5px] font-medium text-mute">{settings.tpl}</span>
