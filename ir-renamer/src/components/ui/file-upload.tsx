@@ -53,7 +53,7 @@ export default function FileUpload({ files, busy, onFiles, onRemove, onClear }: 
       <motion.div
         role="button"
         tabIndex={0}
-        aria-label="PDFs ya ZIP select karo"
+        aria-label="Choose PDFs or a ZIP"
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
@@ -69,7 +69,7 @@ export default function FileUpload({ files, busy, onFiles, onRemove, onClear }: 
         whileHover={{ scale: isDragging ? 1.015 : 1.005 }}
         transition={{ duration: 0.2 }}
         className={cn(
-          "group relative cursor-pointer overflow-hidden px-8 py-9 md:px-10",
+          "group relative cursor-pointer overflow-hidden rounded-xl px-5 py-7",
           "bg-[repeating-linear-gradient(-45deg,transparent_0_14px,color-mix(in_srgb,var(--hoard)_14%,transparent)_14px_28px)]",
           isDragging && "bg-[color-mix(in_srgb,var(--pen)_8%,transparent)] ring-4 ring-pen/30",
         )}
@@ -80,7 +80,7 @@ export default function FileUpload({ files, busy, onFiles, onRemove, onClear }: 
             isDragging ? "inset-[7px] border-pen" : "border-line group-hover:border-pen",
           )}
         />
-        <div className="relative z-10 flex flex-col items-start gap-5 sm:flex-row sm:items-center">
+        <div className="relative z-10 flex flex-col items-center gap-4 text-center">
           <div className="relative shrink-0">
             {isDragging && (
               <span className="absolute -inset-4 animate-glow-slow rounded-full bg-pen/20 blur-md" />
@@ -88,26 +88,26 @@ export default function FileUpload({ files, busy, onFiles, onRemove, onClear }: 
             <UploadCloud
               strokeWidth={1.5}
               className={cn(
-                "relative h-16 w-16 transition-colors duration-300 md:h-[72px] md:w-[72px]",
+                "relative h-14 w-14 transition-colors duration-300",
                 isDragging ? "animate-bounce-drop text-pen" : "text-ink group-hover:text-pen",
               )}
             />
           </div>
           <div className="space-y-1.5">
-            <h2 className="font-display text-2xl font-extrabold md:text-[26px]">
-              {isDragging ? "Yahan chhodo" : files.length ? "Aur files add karo" : "PDFs ya ZIP upload karo"}
+            <h2 className="text-xl font-semibold">
+              {isDragging ? "Drop files here" : files.length ? "Add more files" : "Upload PDFs or a ZIP"}
             </h2>
-            <p className="max-w-lg text-mute">
+            <p className="mx-auto max-w-xs text-sm text-mute">
               {isDragging ? (
-                <span className="font-semibold text-pen">Chhodte hi padhna shuru ho jayega</span>
+                <span className="font-semibold text-pen">Release to start reading</span>
               ) : (
                 <>
-                  Drag &amp; drop karo, ya <span className="font-semibold text-pen">browse</span> karo. Sab kuch aapke
-                  browser me hota hai, file kahin upload nahi hoti.
+                  Drag &amp; drop, or <span className="font-semibold text-pen">browse</span>. Everything runs in your
+                  browser, files are never uploaded.
                 </>
               )}
             </p>
-            <p className="text-sm text-mute">Inspection Request PDFs, ya unki ZIP</p>
+            <p className="text-xs text-mute">Inspection Request scans as PDF, or one ZIP</p>
           </div>
         </div>
         <input ref={inputRef} type="file" multiple hidden onChange={onSelect} accept=".pdf,.zip,application/pdf,application/zip" />
@@ -122,9 +122,9 @@ export default function FileUpload({ files, busy, onFiles, onRemove, onClear }: 
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="border-t border-line px-5 pb-4 pt-4">
+            <div className="border-t border-line px-1 pb-1 pt-4">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-display text-base font-bold">Files ({files.length})</h3>
+                <h3 className="text-base font-semibold">Files ({files.length})</h3>
                 {files.length > 1 && (
                   <button
                     type="button"
@@ -136,7 +136,7 @@ export default function FileUpload({ files, busy, onFiles, onRemove, onClear }: 
                   </button>
                 )}
               </div>
-              <div className={cn("flex flex-col gap-2 overflow-y-auto pr-1", files.length > 3 && "max-h-72")}>
+              <div className={cn("flex flex-col gap-2 overflow-y-auto pr-1", files.length > 3 && "max-h-60")}>
                 <AnimatePresence initial={false}>
                   {files.map((file) => (
                     <motion.div
@@ -175,7 +175,7 @@ export default function FileUpload({ files, busy, onFiles, onRemove, onClear }: 
                               <button
                                 type="button"
                                 disabled={busy}
-                                aria-label="Is file ko hatao"
+                                aria-label="Remove this file"
                                 onClick={() => onRemove(file.id)}
                                 className="cursor-pointer text-mute transition-colors hover:text-bad disabled:cursor-not-allowed disabled:opacity-40"
                               >

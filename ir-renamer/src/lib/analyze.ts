@@ -124,14 +124,14 @@ async function readRefRev(canvas: HTMLCanvasElement) {
   const [a, b] = outs;
   let pick = a;
   if (!(a.ref && REF_OK.test(a.ref)) && b.ref && REF_OK.test(b.ref)) pick = b;
-  if (!pick.ref) flags.push("Ref nahi mila");
+  if (!pick.ref) flags.push("Reference not found");
   else {
-    if (!REF_OK.test(pick.ref)) flags.push("Ref ka format alag lag raha hai");
-    if (a.ref !== b.ref) flags.push("Do OCR pass alag aaye (" + a.ref + " / " + b.ref + ")");
+    if (!REF_OK.test(pick.ref)) flags.push("Reference format looks unusual");
+    if (a.ref !== b.ref) flags.push("The two OCR passes disagree (" + a.ref + " / " + b.ref + ")");
   }
   const rev = pick.rev ?? (pick === a ? b.rev : a.rev);
-  if (rev == null) flags.push("Rev nahi mila");
-  else if (a.rev != null && b.rev != null && a.rev !== b.rev) flags.push("Rev me OCR mismatch");
+  if (rev == null) flags.push("Revision not found");
+  else if (a.rev != null && b.rev != null && a.rev !== b.rev) flags.push("Revision differs between OCR passes");
   return { ref: pick.ref, rev, flags };
 }
 
@@ -183,7 +183,7 @@ async function readDecision(canvas: HTMLCanvasElement): Promise<Decision> {
     rows[1] = r1[0].cy;
   }
   const idx = Object.keys(rows).map(Number).sort((a, b) => a - b);
-  if (idx.length < 2) return { status: null, flags: ["Decision wali lines nahi mili"], geom: null };
+  if (idx.length < 2) return { status: null, flags: ["Could not find the decision lines"], geom: null };
   const n = idx.length;
   const mx = idx.reduce((s, i) => s + i, 0) / n;
   const my = idx.reduce((s, i) => s + rows[i], 0) / n;
@@ -242,9 +242,9 @@ async function readDecision(canvas: HTMLCanvasElement): Promise<Decision> {
       }
     }
   const flags: string[] = [];
-  if (!(pitch > 18 && pitch < 48)) flags.push("Row spacing ajeeb (" + pitch.toFixed(1) + ")");
+  if (!(pitch > 18 && pitch < 48)) flags.push("Unusual row spacing (" + pitch.toFixed(1) + ")");
   if (!bx) {
-    flags.push("Checkbox ka column auto-nahi mila (anchor se estimate)");
+    flags.push("Checkbox column not detected (estimated)");
     bx = [anchor - 2, anchor + 42];
   }
   const sx0 = Math.max(0, Math.round(bx[0] - 8));
@@ -292,12 +292,12 @@ async function readDecision(canvas: HTMLCanvasElement): Promise<Decision> {
   let status: number | null = lowIdx || dens; // tick bottom is the most reliable (the slash can cross the box above)
   if (total < 25) {
     status = null;
-    flags.push("Koi tick nahi dikha");
+    flags.push("No tick mark found");
   } else {
     const sorted = band.slice(1).sort((a, b) => b - a);
-    if (sorted[1] > 0 && sorted[0] / sorted[1] < 1.6) flags.push("Tick do options ke beech/paas (" + band.slice(1).join("/") + ")");
-    if (lowIdx !== dens) flags.push("Do detection method alag aaye (density=" + dens + ", neeche ka point=" + lowIdx + ")");
-    if (idx.length < 3) flags.push("Sirf " + idx.length + " option-lines OCR hui (baaki estimate)");
+    if (sorted[1] > 0 && sorted[0] / sorted[1] < 1.6) flags.push("Tick sits between two options (" + band.slice(1).join("/") + ")");
+    if (lowIdx !== dens) flags.push("The two detection methods disagree (density=" + dens + ", lowest point=" + lowIdx + ")");
+    if (idx.length < 3) flags.push("Only " + idx.length + " option lines read by OCR (rest estimated)");
   }
   return {
     status: status as Status | null,
@@ -356,7 +356,7 @@ export async function analyse(
     it.refImg = thumb(canvas, REF_REGION, 430);
     it.decImg = thumb(canvas, DEC_REGION, 430, mark);
   } catch (e) {
-    it.flags.push("PDF padhne me error: " + (e instanceof Error ? e.message : String(e)));
+    it.flags.push("Could not read the PDF: " + (e instanceof Error ? e.message : String(e)));
   }
   return it;
 }

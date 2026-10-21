@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import FileUpload from "@/components/ui/file-upload";
-import { Header, type Step } from "@/components/Header";
+import { Header } from "@/components/Header";
 import { LiveSheet } from "@/components/LiveSheet";
 import { ProgressPanel } from "@/components/ProgressPanel";
-import { StatsStrip, type Stats } from "@/components/StatsStrip";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ReviewRow } from "@/components/ReviewRow";
 import { Dock } from "@/components/Dock";
+import NumberFlow from "@number-flow/react";
+import { CheckCheck } from "lucide-react";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { TimelineContent } from "@/components/ui/timeline-animation";
+import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal";
+import { PillSwitch } from "@/components/PillSwitch";
+import { cn } from "@/lib/utils";
 import { analyse, getWorker } from "@/lib/analyze";
 import { finalNames, hasFlag } from "@/lib/naming";
 import { STATUS_TXT, type Item, type Settings, type UploadRow } from "@/lib/types";
@@ -66,14 +72,19 @@ export default function App() {
   const verified = items.filter((i) => i.verified).length;
   const flaggedLeft = items.filter((it, i) => (hasFlag(it, names[i]) || names[i].dup) && !it.verified).length;
   const ready = items.length > 0 && verified === items.length && names.every((n) => n.name);
-  const stats: Stats = {
+  const stats = {
     total: items.length,
     ok: items.filter((i) => !i.skipped && i.status === 1).length,
     note: items.filter((i) => !i.skipped && i.status === 2).length,
     rev: items.filter((i) => !i.skipped && (i.status ?? 0) >= 3).length,
     flagged: flaggedLeft,
   };
-  const step: Step = !items.length ? 1 : !ready ? 2 : 3;
+  const step = !items.length || busy ? 1 : !ready ? 2 : 3;
+  const pageRef = useRef<HTMLDivElement>(null);
+  const letters = settings.labels[1] === "A" && settings.labels[2] === "B" && settings.labels[3] === "C" && settings.labels[4] === "D";
+  const words = settings.labels[1] === DEFAULTS.labels[1] && settings.labels[2] === DEFAULTS.labels[2] && settings.labels[3] === DEFAULTS.labels[3] && settings.labels[4] === DEFAULTS.labels[4];
+  const mode: "words" | "letters" | null = letters ? "letters" : words ? "words" : null;
+  const setMode = (m: "words" | "letters") => setSettings((st) => ({ ...st, labels: m === "words" ? DEFAULTS.labels : { 1: "A", 2: "B", 3: "C", 4: "D" } }));
 
   /* ---------- processing ---------- */
   const handleFiles = useCallback(
@@ -83,7 +94,7 @@ export default function App() {
       setDone(false);
       setPct(0);
       try {
-        setStatusText("Files load ho rahi hain…");
+        setStatusText("Loading files…");
         const pending: Pending[] = [];
         for (const f of files) {
           if (/\.zip$/i.test(f.name)) {
@@ -98,7 +109,7 @@ export default function App() {
         }
         pending.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
         if (!pending.length) {
-          setStatusText("Koi PDF nahi mili.");
+          setStatusText("No PDFs found.");
           return;
         }
         setUploads((u) => [...u, ...pending.map((p) => ({ id: p.id, name: p.name, size: 0, progress: 0 }))]);
@@ -107,7 +118,7 @@ export default function App() {
         await getWorker();
         for (let i = 0; i < pending.length; i++) {
           const p = pending[i];
-          setStatusText(`Padh raha hoon: ${i + 1} / ${pending.length}  —  ${p.name}`);
+          setStatusText(`Reading ${i + 1} of ${pending.length}: ${p.name}`);
           setPct(Math.round((i / pending.length) * 100));
           setRow(p.id, 12);
           const buf = await p.get();
@@ -131,7 +142,7 @@ export default function App() {
           setItems((prev) => [...prev, item]);
         }
         setPct(100);
-        setStatusText(`Ho gaya: ${pending.length} files. Neeche har row check karo, phir download.`);
+        setStatusText(`Done: ${pending.length} files. Check each row below, then download.`);
         setDone(true);
       } catch (e) {
         setStatusText("Error: " + (e instanceof Error ? e.message : String(e)));
@@ -180,7 +191,7 @@ export default function App() {
     items.forEach((it, i) => z.file(names[i].name!, it.buf));
     const blob = await z.generateAsync({ type: "blob", compression: "STORE" });
     download(blob, "renamed_pdfs.zip");
-    setStatusText(`ZIP download ho gayi: ${items.length} files.`);
+    setStatusText(`ZIP downloaded: ${items.length} files.`);
   };
   const downloadCsv = () => {
     const q = (v: unknown) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
@@ -190,44 +201,200 @@ export default function App() {
   };
 
   const shown = items.map((it, i) => ({ it, nm: names[i], i })).filter(({ it, nm }) => !onlyFlag || hasFlag(it, nm) || nm.dup);
+  const sample = names.find((n) => n.name)?.name;
+
+  const revealVariants = {
+    visible: (i: number) => ({ y: 0, opacity: 1, filter: "blur(0px)", transition: { delay: i * 0.4, duration: 0.5 } }),
+    hidden: { filter: "blur(10px)", y: -20, opacity: 0 },
+  };
+
+  const stepBadge = (n: number) =>
+    step === n ? (
+      <span className="rounded-full bg-orange-500 px-3 py-1 text-sm font-medium text-white">Current step</span>
+    ) : step > n ? (
+      <span className="rounded-full bg-okbg px-3 py-1 text-sm font-medium text-ok">Done</span>
+    ) : null;
+  const cardCls = (n: number) => cn("relative border bg-card", step === n && "bg-orange-50 ring-2 ring-orange-500 dark:bg-[#1f1710]");
+  const primaryBtn =
+    "w-full cursor-pointer rounded-xl border border-orange-400 bg-gradient-to-t from-orange-500 to-orange-600 p-4 text-lg font-medium text-white shadow-lg shadow-orange-500/30 transition active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
+  const ghostBtn =
+    "w-full cursor-pointer rounded-xl border bg-panel p-4 text-lg font-medium text-ink shadow-lg shadow-black/5 transition active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-40";
+  const Feature = ({ children }: { children: React.ReactNode }) => (
+    <li className="flex items-center">
+      <span className="mr-3 mt-0.5 grid h-6 w-6 shrink-0 place-content-center rounded-full border border-orange-500 bg-panel">
+        <CheckCheck className="h-4 w-4 text-orange-500" />
+      </span>
+      <span className="text-sm text-mute">{children}</span>
+    </li>
+  );
 
   return (
     <>
-      <Header step={step} onTheme={toggleTheme} />
-      <main className="mx-auto max-w-[1240px] px-5 pb-32 pt-5">
-        <section className="grid overflow-hidden rounded-xl border border-line bg-panel shadow-panel md:grid-cols-[1fr_250px]">
-          <FileUpload files={uploads} busy={busy} onFiles={handleFiles} onRemove={removeOne} onClear={clearAll} />
-          <LiveSheet ref={previewRef} busy={busy} hasPage={hasPage} />
-        </section>
+      <Header onTheme={toggleTheme} />
+      <div ref={pageRef} className="relative mx-auto min-h-screen max-w-7xl px-4 pb-32 pt-14">
+        <article className="mb-6 max-w-2xl space-y-4 text-left">
+          <h2 className="mb-4 text-4xl font-medium capitalize md:text-6xl">
+            <VerticalCutReveal
+              splitBy="words"
+              staggerDuration={0.15}
+              staggerFrom="first"
+              reverse={true}
+              containerClassName="justify-start"
+              transition={{ type: "spring", stiffness: 250, damping: 40, delay: 0 }}
+            >
+              Rename every inspection PDF the right way
+            </VerticalCutReveal>
+          </h2>
+          <TimelineContent as="p" animationNum={0} timelineRef={pageRef} customVariants={revealVariants} className="w-[85%] text-sm text-mute md:text-base">
+            Drop your Inspection Request scans. The app reads the IR reference, the revision and the engineer's decision from each one, so all you do is confirm and
+            download.
+          </TimelineContent>
+          <TimelineContent as="div" animationNum={1} timelineRef={pageRef} customVariants={revealVariants}>
+            <PillSwitch
+              className="w-fit"
+              layoutId="status-style"
+              value={mode}
+              onChange={setMode}
+              options={[
+                { value: "words", label: "Status as words" },
+                { value: "letters", label: "Status as letters", badge: "A to D" },
+              ]}
+            />
+          </TimelineContent>
+        </article>
 
-        {(busy || done) && <ProgressPanel pct={pct} text={statusText} busy={busy} />}
-        {done && <StatsStrip stats={stats} />}
-        <div className="sr-only" id="status">{statusText}</div>
+        <div className="grid gap-4 py-4 md:grid-cols-3">
+          {/* 1. Upload */}
+          <TimelineContent as="div" animationNum={2} timelineRef={pageRef} customVariants={revealVariants}>
+            <Card className={cardCls(1)}>
+              <CardHeader className="text-left">
+                <div className="flex justify-between">
+                  <h3 className="mb-2 text-2xl font-semibold">1. Upload</h3>
+                  {stepBadge(1)}
+                </div>
+                <p className="text-sm text-mute">Add the scanned Inspection Requests as PDFs, or as one ZIP.</p>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <FileUpload files={uploads} busy={busy} onFiles={handleFiles} onRemove={removeOne} onClear={clearAll} />
+                {(busy || hasPage) && <LiveSheet ref={previewRef} busy={busy} hasPage={hasPage} />}
+                {(busy || done) && <ProgressPanel pct={pct} text={statusText} busy={busy} />}
+              </CardContent>
+            </Card>
+          </TimelineContent>
+
+          {/* 2. Check */}
+          <TimelineContent as="div" animationNum={3} timelineRef={pageRef} customVariants={revealVariants}>
+            <Card className={cardCls(2)}>
+              <CardHeader className="text-left">
+                <div className="flex justify-between">
+                  <h3 className="mb-2 text-2xl font-semibold">2. Check</h3>
+                  {stepBadge(2)}
+                </div>
+                <p className="mb-2 text-sm text-mute">Every file is read automatically. Confirm each row before you download.</p>
+                <div className="flex items-baseline">
+                  <span className="text-4xl font-semibold">
+                    <NumberFlow value={stats.total} className="text-4xl font-semibold" />
+                  </span>
+                  <span className="ml-1 text-mute">files read</span>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="mb-5 grid grid-cols-2 gap-2.5">
+                  {[
+                    { k: "ok", label: "Approved", bar: "bg-ok", v: stats.ok },
+                    { k: "note", label: "Approved as noted", bar: "bg-note", v: stats.note },
+                    { k: "rev", label: "Revise / Not approved", bar: "bg-revise", v: stats.rev },
+                    { k: "flag", label: "Need a check", bar: "bg-bad", v: stats.flagged },
+                  ].map((t) => (
+                    <div key={t.k} className="relative overflow-hidden rounded-lg border bg-panel px-3.5 py-2.5">
+                      <span className={cn("absolute inset-y-0 left-0 w-1", t.bar)} />
+                      <div className="text-2xl font-semibold leading-none">
+                        <NumberFlow value={t.v} />
+                      </div>
+                      <div className="mt-1 text-xs text-mute">{t.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <button type="button" className={cn(primaryBtn, "mb-3")} onClick={verifyClean} disabled={!items.length || busy}>
+                  Verify all clean rows
+                </button>
+                <button type="button" className={cn(ghostBtn, "mb-6")} onClick={() => setOnlyFlag((v) => !v)} disabled={!items.length}>
+                  {onlyFlag ? "Show all rows" : "Show only rows to check"}
+                </button>
+                <div className="space-y-3 border-t pt-4">
+                  <h4 className="text-base font-semibold">What to look at</h4>
+                  <ul className="space-y-2">
+                    <Feature>The red box marks the option the app detected</Feature>
+                    <Feature>Fix any wrong value right inside its row</Feature>
+                    <Feature>Duplicate names get (2) added automatically</Feature>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          </TimelineContent>
+
+          {/* 3. Download */}
+          <TimelineContent as="div" animationNum={4} timelineRef={pageRef} customVariants={revealVariants}>
+            <Card className={cardCls(3)}>
+              <CardHeader className="text-left">
+                <div className="flex justify-between">
+                  <h3 className="mb-2 text-2xl font-semibold">3. Download</h3>
+                  {stepBadge(3)}
+                </div>
+                <p className="mb-2 text-sm text-mute">The download unlocks once every row is verified.</p>
+                <div className="flex items-baseline">
+                  <span className="text-4xl font-semibold">
+                    <NumberFlow value={verified} className="text-4xl font-semibold" />
+                  </span>
+                  <span className="ml-1 text-mute">/ {items.length} verified</span>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="mb-5 h-2 overflow-hidden rounded-full bg-line2">
+                  <div className="h-full rounded-full bg-ok transition-[width] duration-500" style={{ width: `${items.length ? (verified / items.length) * 100 : 0}%` }} />
+                </div>
+                <button type="button" className={cn(primaryBtn, "mb-3")} onClick={downloadZip} disabled={!ready || busy}>
+                  Download renamed ZIP
+                </button>
+                <button type="button" className={cn(ghostBtn, "mb-6")} onClick={downloadCsv} disabled={!items.length}>
+                  Download mapping CSV
+                </button>
+                <div className="space-y-3 border-t pt-4">
+                  <h4 className="text-base font-semibold">Name example</h4>
+                  <p className="break-all font-mono text-[12.5px] text-mute">{sample ?? "TVD-8775-KIC-PAR-WIR-ES-IRR-000049-R0-Approved as noted.pdf"}</p>
+                  <ul className="space-y-2">
+                    <Feature>Your PDFs are only renamed, never changed</Feature>
+                    <Feature>The CSV lists every old and new name</Feature>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          </TimelineContent>
+        </div>
 
         <SettingsPanel settings={settings} onChange={setSettings} />
 
         {items.length > 0 && (
-          <section className="mt-3.5 overflow-hidden rounded-xl border border-line bg-panel shadow-panel">
-            <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3">
-              <h2 className="mr-auto font-display text-lg font-bold">Har file check karo</h2>
-              <span className="text-[12.5px] text-mute">{items.length} files · {flaggedLeft} check karni baaki</span>
-              <button type="button" onClick={() => setOnlyFlag((v) => !v)} className="cursor-pointer rounded-lg border border-transparent px-3.5 py-2 font-semibold transition hover:border-ink">
-                {onlyFlag ? "Sab dikhao" : "Sirf check-wali dikhao"}
-              </button>
-              <button type="button" onClick={verifyClean} className="cursor-pointer rounded-lg border border-line bg-panel px-3.5 py-2 font-semibold transition hover:border-ink active:scale-[.98]">
-                Clean wali sab verify karo
-              </button>
+          <Card className="mt-4 overflow-hidden">
+            <div className="flex flex-wrap items-center gap-2.5 border-b px-4 py-3">
+              <h2 className="mr-auto text-lg font-semibold">Review every file</h2>
+              <span className="text-[12.5px] text-mute">
+                {items.length} files · {flaggedLeft} still to check
+              </span>
             </div>
             <div data-testid="rows">
               {shown.map(({ it, nm, i }) => (
                 <ReviewRow key={it.id} it={it} nm={nm} index={i} flagged={hasFlag(it, nm)} onEdit={(p) => edit(it.id, p)} onVerify={(v) => setVerified(it.id, v)} />
               ))}
-              {!shown.length && <div className="p-8 text-center text-mute">Koi row check karne ko nahi bachi.</div>}
+              {!shown.length && <div className="p-8 text-center text-mute">No rows left to check.</div>}
             </div>
-          </section>
+          </Card>
         )}
-      </main>
-      <Dock show={items.length > 0} verified={verified} total={items.length} ready={ready} busy={busy} onZip={downloadZip} onCsv={downloadCsv} />
+        <div className="sr-only" id="status" aria-live="polite">
+          {statusText}
+        </div>
+      </div>
+      <Dock show={items.length > 0} verified={verified} total={items.length} ready={ready} busy={busy} onZip={downloadZip} />
     </>
   );
 }

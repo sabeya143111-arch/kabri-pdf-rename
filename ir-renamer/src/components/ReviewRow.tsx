@@ -45,7 +45,7 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify }: RowProps
         <div className="pt-0.5 font-mono text-[13px] text-mute">{index + 1}</div>
         <div>
           <div className="mb-2 break-all text-xs text-mute">{it.name}</div>
-          <Tag tone="good">Pehle se naam laga hai, as-is rakha</Tag>
+          <Tag tone="good">Already named, kept as-is</Tag>
         </div>
       </div>
     );
@@ -56,8 +56,8 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify }: RowProps
       <div className="pt-0.5 font-mono text-[13px] text-mute">{index + 1}</div>
 
       <div className="col-start-2 lg:col-start-auto">
-        <img src={it.refImg} alt="IR ref ka hissa" className="block h-auto w-full rounded-md border border-line bg-white" />
-        <img src={it.decImg} alt="Decision ka hissa" className="mt-1.5 block h-auto w-full rounded-md border border-line bg-white" />
+        <img src={it.refImg} alt="IR reference area of the scan" className="block h-auto w-full rounded-md border border-line bg-white" />
+        <img src={it.decImg} alt="Engineer decision area of the scan" className="mt-1.5 block h-auto w-full rounded-md border border-line bg-white" />
       </div>
 
       <div className="col-start-2 lg:col-start-auto">
@@ -88,7 +88,7 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify }: RowProps
           <label className="flex flex-1 flex-col gap-1 text-[12.5px] text-mute">
             Decision
             <select value={it.status ?? ""} onChange={(e) => onEdit({ status: e.target.value ? (Number(e.target.value) as Status) : null })}>
-              <option value="">Chuno</option>
+              <option value="">Choose</option>
               {([1, 2, 3, 4] as Status[]).map((k) => (
                 <option key={k} value={k}>
                   {STATUS_TXT[k]}
@@ -101,7 +101,7 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify }: RowProps
           {it.flags.map((f) => (
             <Tag key={f}>{f}</Tag>
           ))}
-          {nm.dup && <Tag tone="bad">Duplicate naam, (2) laga diya</Tag>}
+          {nm.dup && <Tag tone="bad">Duplicate name, (2) added</Tag>}
           {!it.flags.length && nm.name && !nm.dup && <Tag tone="good">Auto-detect clean</Tag>}
         </div>
       </div>
@@ -119,7 +119,7 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify }: RowProps
         {nm.name ? (
           <div data-testid="newname" className="mt-2.5 break-words font-mono text-[12.5px] font-medium leading-snug [overflow-wrap:anywhere]">{nm.name}</div>
         ) : (
-          <div className="mt-2.5 font-medium text-bad">Naam nahi ban sakta, upar ref / rev / decision bharo</div>
+          <div className="mt-2.5 font-medium text-bad">Cannot build a name: fill in ref, rev and decision</div>
         )}
       </div>
 
