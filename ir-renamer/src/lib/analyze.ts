@@ -537,3 +537,23 @@ export async function analyse(
 }
 
 export const __debug = { ocrWords, readHeader, readDecisionIR, readDecisionSub, parseRef, renderFirstPage };
+
+/** Every page of a PDF as image URLs (used by the full-scan viewer, so pages 2+ can be checked too). */
+export async function renderAllPages(buf: ArrayBuffer, scale = 1.3): Promise<string[]> {
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf.slice(0)) }).promise;
+  const urls: string[] = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n);
+    const vp = page.getViewport({ scale: scale * (200 / 72) / 1.5 });
+    const c = document.createElement("canvas");
+    c.width = Math.round(vp.width);
+    c.height = Math.round(vp.height);
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    urls.push(c.toDataURL("image/jpeg", 0.85));
+  }
+  void pdf.destroy();
+  return urls;
+}

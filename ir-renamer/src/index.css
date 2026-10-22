@@ -83,3 +83,5 @@ input[type="text"]:focus, select:focus {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--panel); color: var(--ink); padding: 0 5px; font: 600 11.5px ui-monospace, monospace; }

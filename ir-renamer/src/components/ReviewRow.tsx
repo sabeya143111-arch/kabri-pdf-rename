@@ -1,8 +1,9 @@
-import { Download, Maximize2, Columns2 } from "lucide-react";
+import { Download, Maximize2, Columns2, Undo2, RotateCcw, Files } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { LEGENDS, type Item, type Legend, type Status } from "@/lib/types";
 import type { FinalName } from "@/lib/naming";
+import type { Conf } from "@/lib/checks";
 
 const STAMP_CLS: Record<number, string> = {
   0: "text-mute",
@@ -12,7 +13,14 @@ const STAMP_CLS: Record<number, string> = {
   4: "text-bad",
 };
 
-function Tag({ children, tone = "warn" }: { children: React.ReactNode; tone?: "warn" | "bad" | "good" }) {
+const CONF_LABEL: Record<Conf, string> = { high: "High confidence", medium: "Medium confidence", low: "Low confidence: check closely", manual: "Edited by you" };
+const fmtTime = (t: number) => {
+  const d = new Date(t);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+function Tag({ children, tone = "warn" }: { children: React.ReactNode; tone?: "warn" | "bad" | "good" | "info" }) {
   return (
     <span
       className={cn(
@@ -20,6 +28,7 @@ function Tag({ children, tone = "warn" }: { children: React.ReactNode; tone?: "w
         tone === "warn" && "bg-revisebg text-revise",
         tone === "bad" && "bg-badbg text-bad",
         tone === "good" && "bg-okbg text-ok",
+        tone === "info" && "border bg-panel text-mute",
       )}
     >
       {children}
@@ -37,15 +46,22 @@ export interface RowProps {
   onDownload: () => void;
   onZoom: () => void;
   onCompare?: () => void;
+  conf: Conf;
+  confWhy: string[];
+  xc: string[];
+  focused: boolean;
+  onFocus: () => void;
+  onUndo: () => void;
+  onReset: () => void;
 }
 
-export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload, onZoom, onCompare }: RowProps) {
-  const base = "grid items-start gap-3.5 border-b border-line2 px-4 py-3.5 transition-colors duration-300 last:border-b-0";
+export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload, onZoom, onCompare, conf, confWhy, xc, focused, onFocus, onUndo, onReset }: RowProps) {
+  const base = cn("grid items-start gap-3.5 border-b border-line2 px-4 py-3.5 transition-colors duration-300 last:border-b-0", focused && "outline outline-2 -outline-offset-2 outline-orange-500");
   const tone = it.verified ? "bg-okbg/60" : flagged || nm.dup ? "bg-flagbg" : "";
 
   if (it.skipped) {
     return (
-      <div className={cn(base, "grid-cols-[34px_1fr]", tone)}>
+      <div data-row-id={it.id} onMouseDown={onFocus} className={cn(base, "grid-cols-[34px_1fr]", tone)}>
         <div className="pt-0.5 font-mono text-[13px] text-mute">{index + 1}</div>
         <div>
           <div className="mb-2 break-all text-xs text-mute">{it.name}</div>
@@ -64,7 +80,7 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload
   }
 
   return (
-    <div className={cn(base, "grid-cols-[28px_1fr] lg:grid-cols-[34px_330px_minmax(240px,1fr)_minmax(220px,300px)_74px]", tone)}>
+    <div data-row-id={it.id} onMouseDown={onFocus} className={cn(base, "grid-cols-[28px_1fr] lg:grid-cols-[34px_330px_minmax(240px,1fr)_minmax(220px,300px)_92px]", tone)}>
       <div className="pt-0.5 font-mono text-[13px] text-mute">{index + 1}</div>
 
       <div className="col-start-2 lg:col-start-auto">
@@ -81,7 +97,7 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload
 
       <div className="col-start-2 lg:col-start-auto">
         <div data-testid="fname" className="mb-2 break-all text-xs text-mute">
-          {it.name} · {it.pages || "?"} pages
+          {it.name} · {it.pages || "?"} {it.pages === 1 ? "page" : "pages"}
         </div>
         <label className="flex flex-col gap-1 text-[12.5px] text-mute">
           IR Ref No
@@ -133,8 +149,19 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload
           </select>
         </label>
         <div className="mt-2 flex flex-wrap gap-1.5">
+          <span title={confWhy.join("; ")}>
+            <Tag tone={conf === "high" ? "good" : conf === "medium" ? "warn" : conf === "low" ? "bad" : "info"}>{CONF_LABEL[conf]}</Tag>
+          </span>
+          {it.pages > 1 && (
+            <button type="button" onClick={onZoom} className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-orange-500 bg-panel px-2.5 py-0.5 text-xs font-medium text-pen hover:bg-orange-500 hover:text-white">
+              <Files className="h-3.5 w-3.5" /> {it.pages} pages · view all
+            </button>
+          )}
           {it.flags.map((f) => (
             <Tag key={f}>{f}</Tag>
+          ))}
+          {xc.map((f) => (
+            <Tag key={f} tone="bad">{f}</Tag>
           ))}
           {nm.dup && <Tag tone="bad">Duplicate name, (2) added</Tag>}
           {nm.dup && onCompare && (
@@ -142,8 +169,28 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload
               <Columns2 className="h-3.5 w-3.5" /> Compare duplicates
             </button>
           )}
-          {!it.flags.length && nm.name && !nm.dup && <Tag tone="good">Auto-detect clean</Tag>}
+          {!it.flags.length && !xc.length && nm.name && !nm.dup && <Tag tone="good">Auto-detect clean</Tag>}
         </div>
+        {!!it.history?.length && (
+          <details className="mt-2 rounded-md border bg-panel px-2.5 py-1.5 text-[12.5px]">
+            <summary className="cursor-pointer font-medium text-ink">Change history ({it.history.length})</summary>
+            <ul className="mt-1.5 space-y-0.5 text-mute">
+              {it.history.map((c, k) => (
+                <li key={k} className="font-mono text-[11.5px]">
+                  {fmtTime(c.t)} · {c.field}: {c.from ?? "(empty)"} → {c.to ?? "(empty)"}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" onClick={onUndo} className="inline-flex cursor-pointer items-center gap-1 rounded-md border bg-panel px-2.5 py-1 text-xs font-medium hover:border-orange-500">
+                <Undo2 className="h-3.5 w-3.5" /> Undo last change
+              </button>
+              <button type="button" onClick={onReset} className="inline-flex cursor-pointer items-center gap-1 rounded-md border bg-panel px-2.5 py-1 text-xs font-medium hover:border-orange-500">
+                <RotateCcw className="h-3.5 w-3.5" /> Back to auto-detected
+              </button>
+            </div>
+          </details>
+        )}
       </div>
 
       <div className="col-start-2 lg:col-start-auto">
@@ -184,6 +231,12 @@ export function ReviewRow({ it, nm, index, flagged, onEdit, onVerify, onDownload
           </svg>
         </span>
         <small className="mt-1 block text-[11.5px] text-mute">Verified</small>
+        {it.verified && it.verifiedAt && (
+          <small className="block text-[10.5px] leading-tight text-mute">
+            {it.verifiedBy ? it.verifiedBy + ", " : ""}
+            {fmtTime(it.verifiedAt).slice(5)}
+          </small>
+        )}
       </label>
     </div>
   );

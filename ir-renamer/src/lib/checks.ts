@@ -46,3 +46,70 @@ export function findMissing(items: Item[]): MissingGroup[] {
   }
   return out.sort((a, b) => a.kind.localeCompare(b.kind));
 }
+
+/* ---------- confidence + cross-checks ---------- */
+import type { FinalName } from "./naming";
+import { LEGENDS } from "./types";
+
+export const REF_OK = /^TVD-\d{4}-[A-Z]{3}-[A-Z]{3}-[A-Z]{2,3}(-[A-Z0-9]{1,4}){0,3}-\d{6,7}$/;
+
+export type Conf = "high" | "medium" | "low" | "manual";
+const LOW_FLAG = /not found|disagree|unusual|between|could not|not detected|estimated|differs|only \d|not recognised|no tick|no status/i;
+
+/** How much the auto-detect can be trusted for one row. */
+export function confidence(it: Item): { level: Conf; why: string[] } {
+  if (it.history?.length) return { level: "manual", why: ["You changed this row by hand"] };
+  const why: string[] = [];
+  let low = false;
+  if (!it.ref) { low = true; why.push("No reference read"); }
+  else if (!REF_OK.test(it.ref)) { low = true; why.push("Reference format looks unusual"); }
+  if (it.rev == null || it.rev === "") { low = true; why.push("No revision read"); }
+  if (it.status == null) { low = true; why.push("No decision read"); }
+  for (const f of it.flags) {
+    if (LOW_FLAG.test(f)) low = true;
+    why.push(f);
+  }
+  if (low) return { level: "low", why };
+  if (it.flags.length) return { level: "medium", why };
+  return { level: "high", why: [] };
+}
+
+/** Extra safety checks that compare rows with each other and with the form type. */
+export function crossChecks(items: Item[], names: FinalName[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  const add = (id: string, msg: string) => (out[id] ||= []).push(msg);
+  const byRef = new Map<string, Item[]>();
+  items.forEach((it, i) => {
+    if (it.skipped) return;
+    void names[i];
+    if (it.ref) {
+      const k = it.ref.toUpperCase() + "|" + (parseInt(it.rev ?? "", 10) || 0);
+      byRef.set(k, [...(byRef.get(k) ?? []), it]);
+    }
+    if (it.ref) {
+      const m = it.ref.match(/^TVD-(\d{4})-/);
+      if (m && (it.legend === "ir8775" || it.legend === "ir8797")) {
+        const want = it.legend === "ir8775" ? "8775" : "8797";
+        if (m[1] !== want) add(it.id, `Reference says project ${m[1]} but the form type is ${LEGENDS[it.legend].title}`);
+      }
+      if (it.legend !== "sub" && /-(MP|MAT)-\d{5,7}$/.test(it.ref)) add(it.id, "Reference looks like a Submittal but the form type is an Inspection Request");
+      if (it.legend === "sub" && /-(IR|IRR)-\d{5,7}$/.test(it.ref)) add(it.id, "Reference looks like an Inspection Request but the form type is a Submittal");
+      if (it.history?.length && !REF_OK.test(it.ref)) add(it.id, "Reference format looks unusual (edited by hand)");
+    }
+    if (it.rev && !/^\d{1,2}$/.test(it.rev.trim())) add(it.id, "Revision is not a number");
+    else if (it.rev && parseInt(it.rev, 10) > 5) add(it.id, `Revision ${it.rev} is unusually high`);
+  });
+  for (const group of byRef.values()) {
+    if (group.length < 2) continue;
+    const decisions = new Set(group.map((g) => `${g.legend}:${g.status}`));
+    if (decisions.size < 2) continue;
+    for (const g of group) {
+      const others = group
+        .filter((o) => o !== g)
+        .map((o) => `${o.name} (${o.status ? LEGENDS[o.legend].stamp[o.status] : "no decision"})`)
+        .join(", ");
+      add(g.id, `Same IR ref and revision with a different decision in ${others}`);
+    }
+  }
+  return out;
+}

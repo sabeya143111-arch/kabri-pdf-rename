@@ -3,6 +3,23 @@ export type Status = 1 | 2 | 3 | 4 | 5;
 /** Which printed form (and which list of decisions) a scan uses. */
 export type Legend = "ir8775" | "ir8797" | "sub";
 
+/** One manual change made in Review (kept so it can be undone and audited). */
+export interface Change {
+  t: number;
+  field: "ref" | "rev" | "status" | "legend";
+  from: string | null;
+  to: string | null;
+}
+
+/** What the auto-detect read, before any manual change. */
+export interface AutoRead {
+  ref: string | null;
+  rev: string | null;
+  status: Status | null;
+  legend: Legend;
+  flags: string[];
+}
+
 export interface Item {
   id: string;
   name: string;
@@ -17,6 +34,10 @@ export interface Item {
   skipped: boolean;
   refImg?: string;
   decImg?: string;
+  history?: Change[];
+  auto?: AutoRead;
+  verifiedAt?: number;
+  verifiedBy?: string;
 }
 
 export type Labels = Record<Legend, Record<Status, string>>;
@@ -26,6 +47,10 @@ export interface Settings {
   labels: Labels;
   skipNamed: boolean;
   folders: boolean;
+  /** put rename_mapping.csv and audit_log.csv inside the ZIP */
+  zipLogs: boolean;
+  /** name written in the audit log next to every verified row */
+  verifier: string;
 }
 
 export interface UploadRow {

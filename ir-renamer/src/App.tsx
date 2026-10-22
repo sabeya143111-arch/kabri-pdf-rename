@@ -8,9 +8,9 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { ReviewRow } from "@/components/ReviewRow";
 import { Dock } from "@/components/Dock";
 import NumberFlow from "@number-flow/react";
-import { CheckCheck, Search, TriangleAlert } from "lucide-react";
+import { CheckCheck, Keyboard, Search, TriangleAlert } from "lucide-react";
 import { PageViewer, type ViewItem } from "@/components/PageViewer";
-import { findMissing } from "@/lib/checks";
+import { confidence, crossChecks, findMissing, type Conf } from "@/lib/checks";
 import { FolderShelf } from "@/components/FolderShelf";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { TimelineContent } from "@/components/ui/timeline-animation";
@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { analyse, getWorker } from "@/lib/analyze";
 import { clearSession, loadSession, saveSession } from "@/lib/store";
 import { baseName, finalNames, hasFlag } from "@/lib/naming";
-import { LEGENDS, LETTER_LABELS, WORD_LABELS, sameLabels, type Item, type Settings, type UploadRow } from "@/lib/types";
+import { LEGENDS, LETTER_LABELS, WORD_LABELS, sameLabels, type Change, type Item, type Settings, type UploadRow } from "@/lib/types";
 
 interface Pending {
   id: string;
@@ -35,6 +35,8 @@ const DEFAULTS: Settings = {
   labels: WORD_LABELS,
   skipNamed: true,
   folders: true,
+  zipLogs: true,
+  verifier: "",
 };
 
 let uid = 0;
@@ -56,9 +58,11 @@ export default function App() {
   const [done, setDone] = useState(false);
   const [pct, setPct] = useState(0);
   const [statusText, setStatusText] = useState("");
-  type Filter = "all" | "1" | "2" | "rev" | "check" | "dup";
+  type Filter = "all" | "1" | "2" | "rev" | "check" | "dup" | "low" | "multi";
   const [fil, setFil] = useState<Filter>("all");
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<"file" | "risk">("file");
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [viewer, setViewer] = useState<{ heading: string; items: ViewItem[] } | null>(null);
   const closeViewer = useCallback(() => setViewer(null), []);
   const onlyFlag = fil === "check";
@@ -116,8 +120,11 @@ export default function App() {
 
   /* ---------- derived ---------- */
   const names = useMemo(() => finalNames(items, settings), [items, settings]);
+  const xc = useMemo(() => crossChecks(items, names), [items, names]);
+  const confs = useMemo(() => items.map((it) => confidence(it)), [items]);
+  const isFlagged = (it: Item, i: number) => hasFlag(it, names[i]) || names[i].dup || (xc[it.id]?.length ?? 0) > 0;
   const verified = items.filter((i) => i.verified).length;
-  const flaggedLeft = items.filter((it, i) => (hasFlag(it, names[i]) || names[i].dup) && !it.verified).length;
+  const flaggedLeft = items.filter((it, i) => isFlagged(it, i) && !it.verified).length;
   const ready = items.length > 0 && verified === items.length && names.every((n) => n.name);
   const stats = {
     total: items.length,
@@ -221,17 +228,64 @@ export default function App() {
   };
 
   /* ---------- editing / verifying ---------- */
+  const who = settings.verifier.trim();
+  const stamp = (v: boolean): Partial<Item> => (v ? { verified: true, verifiedAt: Date.now(), verifiedBy: who || undefined } : { verified: false, verifiedAt: undefined, verifiedBy: undefined });
+  const autoOf = (it: Item) => it.auto ?? { ref: it.ref, rev: it.rev, status: it.status, legend: it.legend, flags: it.flags };
   const edit = (id: string, patch: Partial<Item>) =>
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch, flags: [], verified: true } : it)));
-  const setVerified = (id: string, v: boolean) => setItems((prev) => prev.map((it) => (it.id === id ? { ...it, verified: v } : it)));
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== id) return it;
+        const changes: Change[] = [];
+        const now = Date.now();
+        for (const f of ["ref", "rev", "status", "legend"] as const) {
+          if (!(f in patch)) continue;
+          const from = it[f] == null ? null : String(it[f]);
+          const to = patch[f] == null ? null : String(patch[f]);
+          if (from !== to) changes.push({ t: now, field: f, from, to });
+        }
+        if (!changes.length) return { ...it, ...stamp(true) };
+        return { ...it, ...patch, auto: autoOf(it), history: [...(it.history ?? []), ...changes], flags: [], ...stamp(true) };
+      }),
+    );
+  const setVerified = (id: string, v: boolean) => setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...stamp(v) } : it)));
+  /** Put the last batch of changes back (they share one timestamp). */
+  const undo = (id: string) =>
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== id || !it.history?.length) return it;
+        const last = it.history[it.history.length - 1].t;
+        const undone = it.history.filter((c) => c.t === last);
+        const rest = it.history.filter((c) => c.t !== last);
+        const back: Partial<Item> = {};
+        for (const c of undone) {
+          if (c.field === "status") back.status = c.from == null ? null : (Number(c.from) as Item["status"]);
+          else if (c.field === "legend") back.legend = c.from as Item["legend"];
+          else back[c.field] = c.from;
+        }
+        const next: Item = { ...it, ...back, history: rest, ...stamp(false) };
+        if (!rest.length) {
+          next.flags = it.auto?.flags ?? [];
+          next.auto = undefined;
+          next.history = undefined;
+        }
+        return next;
+      }),
+    );
+  const resetAuto = (id: string) =>
+    setItems((prev) =>
+      prev.map((it) => (it.id === id && it.auto ? { ...it, ref: it.auto.ref, rev: it.auto.rev, status: it.auto.status, legend: it.auto.legend, flags: it.auto.flags, history: undefined, auto: undefined, ...stamp(false) } : it)),
+    );
+  /** One click verifies only rows that are high confidence and free of cross-check warnings. */
   const verifyClean = () => {
     let k = 0;
     items.forEach((it, i) => {
       if (it.skipped || it.verified || it.flags.length || !names[i].name || names[i].dup) return;
+      if (confs[i].level !== "high" || xc[it.id]?.length) return;
       setTimeout(() => setVerified(it.id, true), k * 28);
       k++;
     });
   };
+  const cleanLeft = items.filter((it, i) => !it.skipped && !it.verified && !it.flags.length && names[i].name && !names[i].dup && confs[i].level === "high" && !xc[it.id]?.length).length;
 
   /* ---------- outputs ---------- */
   const folderOf = (it: Item) => {
@@ -239,49 +293,154 @@ export default function App() {
     if (it.skipped) return "Already named/";
     return (it.status ? WORD_LABELS[it.legend]?.[it.status] ?? "Unsorted" : "Unsorted") + "/";
   };
+  /* ---------- keyboard: J/K or arrows move, 1-5 decision, Enter verify, Z undo ---------- */
+  const kbRef = useRef({ view, viewerOpen: false, focusId: null as string | null });
+  const shownIds = useRef<string[]>([]);
+  kbRef.current = { view, viewerOpen: !!viewer, focusId };
+  const focusRow = useCallback((id: string) => {
+    setFocusId(id);
+    requestAnimationFrame(() => document.querySelector(`[data-row-id="${id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+  }, []);
+  const actRef = useRef({ edit, setVerified, undo, items, names });
+  actRef.current = { edit, setVerified, undo, items, names };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const k = kbRef.current;
+      if (k.view !== "review" || k.viewerOpen || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+      if (tag === "BUTTON" && (e.key === "Enter" || e.key === " ")) return;
+      const ids = shownIds.current;
+      const at = k.focusId ? ids.indexOf(k.focusId) : -1;
+      const key = e.key.toLowerCase();
+      if (key === "arrowdown" || key === "j" || key === "arrowright") {
+        e.preventDefault();
+        const n = ids[Math.min(ids.length - 1, at + 1)];
+        if (n) focusRow(n);
+      } else if (key === "arrowup" || key === "k" || key === "arrowleft") {
+        e.preventDefault();
+        const n = ids[Math.max(0, at - 1)];
+        if (n) focusRow(n);
+      } else if (k.focusId) {
+        const it = actRef.current.items.find((x) => x.id === k.focusId);
+        if (!it || it.skipped) return;
+        if (/^[1-5]$/.test(key)) {
+          const st = Number(key) as Item["status"];
+          if (!LEGENDS[it.legend].options.includes(st!)) return;
+          e.preventDefault();
+          actRef.current.edit(it.id, { status: st });
+        } else if (key === "enter" || key === "v") {
+          e.preventDefault();
+          const now = !it.verified;
+          const idx = actRef.current.items.indexOf(it);
+          if (now && !actRef.current.names[idx]?.name) return; // cannot verify a row that has no name yet (same rule as the tick box)
+          actRef.current.setVerified(it.id, now);
+          if (now) {
+            const n = ids[at + 1];
+            if (n) focusRow(n);
+          }
+        } else if (key === "z") {
+          e.preventDefault();
+          actRef.current.undo(it.id);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusRow]);
+
+  const csvQ = (v: unknown) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  const fmtT = (t?: number) => {
+    if (!t) return "";
+    const d = new Date(t);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  const decisionText = (legend: Item["legend"], st: Item["status"]) => (st ? LEGENDS[legend].text[st] : "");
+  const mappingCsv = () => {
+    const lines = ["old_name,new_name,folder,ref,rev,decision"];
+    items.forEach((it, i) => lines.push([it.name, names[i].name ?? "", folderOf(it).replace(/\/$/, ""), it.ref ?? "", it.rev ?? "", decisionText(it.legend, it.status)].map(csvQ).join(",")));
+    return "\ufeff" + lines.join("\n");
+  };
+  const auditCsv = () => {
+    const head = ["no", "old_name", "new_name", "folder", "form", "ref", "rev", "decision", "auto_ref", "auto_rev", "auto_decision", "confidence", "checks", "edits", "pages", "verified", "verified_by", "verified_at"];
+    const lines = [head.join(",")];
+    items.forEach((it, i) => {
+      const au = autoOf(it);
+      const checks = [...(it.skipped ? [] : au.flags), ...(xc[it.id] ?? []), ...(names[i].dup ? ["Duplicate name, (n) added"] : [])].join(" | ");
+      const edits = (it.history ?? []).map((c) => `${c.field}: ${c.from ?? ""} -> ${c.to ?? ""}`).join(" | ");
+      lines.push(
+        [
+          i + 1, it.name, names[i].name ?? "", folderOf(it).replace(/\/$/, ""), it.skipped ? "already named" : LEGENDS[it.legend].title, it.ref ?? "", it.rev ?? "", decisionText(it.legend, it.status),
+          au.ref ?? "", au.rev ?? "", decisionText(au.legend, au.status), it.skipped ? "" : confs[i].level, checks, edits, it.pages || "", it.verified ? "yes" : "no", it.verifiedBy ?? "", fmtT(it.verifiedAt),
+        ].map(csvQ).join(","),
+      );
+    });
+    if (missing.length) {
+      lines.push("", csvQ("IR numbers not found between the uploaded ones:"));
+      for (const g of missing) lines.push([g.kind, g.tooBig ? "big gaps, check every ref" : g.missing.join(", ")].map(csvQ).join(","));
+    }
+    lines.push("", csvQ("Exported " + fmtT(Date.now()) + (who ? " by " + who : "")));
+    return "\ufeff" + lines.join("\n");
+  };
   const downloadZip = async () => {
     if (!ready) return;
     const z = new JSZip();
     items.forEach((it, i) => z.file(folderOf(it) + names[i].name!, it.buf));
+    if (settings.zipLogs) {
+      z.file("rename_mapping.csv", mappingCsv());
+      z.file("audit_log.csv", auditCsv());
+    }
     const blob = await z.generateAsync({ type: "blob", compression: "STORE" });
     download(blob, "renamed_pdfs.zip");
-    setStatusText(`ZIP downloaded: ${items.length} files.`);
+    setStatusText(`ZIP downloaded: ${items.length} files${settings.zipLogs ? " + mapping and audit log" : ""}.`);
   };
-  const downloadCsv = () => {
-    const q = (v: unknown) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-    const lines = ["old_name,new_name,folder,ref,rev,decision"];
-    items.forEach((it, i) => lines.push([it.name, names[i].name ?? "", folderOf(it).replace(/\/$/, ""), it.ref ?? "", it.rev ?? "", it.status ? LEGENDS[it.legend].text[it.status] : ""].map(q).join(",")));
-    download(new Blob(["﻿" + lines.join("\n")], { type: "text/csv" }), "rename_mapping.csv");
-  };
+  const downloadCsv = () => download(new Blob([mappingCsv()], { type: "text/csv" }), "rename_mapping.csv");
+  const downloadAudit = () => download(new Blob([auditCsv()], { type: "text/csv" }), "audit_log.csv");
 
   const matches = (it: Item, nm: (typeof names)[number]) => {
     if (fil === "1" && !(!it.skipped && it.status === 1)) return false;
     if (fil === "2" && !(!it.skipped && it.status === 2)) return false;
     if (fil === "rev" && !(!it.skipped && (it.status ?? 0) >= 3)) return false;
-    if (fil === "check" && !(hasFlag(it, nm) || nm.dup)) return false;
+    if (fil === "check" && !(hasFlag(it, nm) || nm.dup || xc[it.id]?.length)) return false;
+    if (fil === "low" && !(!it.skipped && confidence(it).level === "low")) return false;
+    if (fil === "multi" && !(!it.skipped && it.pages > 1)) return false;
     if (fil === "dup" && !nm.dup) return false;
     const t = q.trim().toLowerCase();
     if (!t) return true;
     const hay = [it.name, it.ref ?? "", nm.name ?? "", it.status ? LEGENDS[it.legend].stamp[it.status] : ""].join(" ").toLowerCase();
     return t.split(/\s+/).every((w) => hay.includes(w));
   };
-  const shown = items.map((it, i) => ({ it, nm: names[i], i })).filter(({ it, nm }) => matches(it, nm));
+  const RANK: Record<Conf, number> = { low: 0, medium: 1, manual: 2, high: 3 };
+  const shown = items
+    .map((it, i) => ({ it, nm: names[i], i }))
+    .filter(({ it, nm }) => matches(it, nm))
+    .sort((a, b) => {
+      if (sort !== "risk") return 0;
+      const ka = (a.it.verified ? 10 : 0) + (a.it.skipped ? 20 : 0) + RANK[confs[a.i].level] - (xc[a.it.id]?.length ? 5 : 0);
+      const kb = (b.it.verified ? 10 : 0) + (b.it.skipped ? 20 : 0) + RANK[confs[b.i].level] - (xc[b.it.id]?.length ? 5 : 0);
+      return ka - kb || a.i - b.i;
+    });
   const missing = useMemo(() => findMissing(items), [items]);
+  shownIds.current = shown.map((r) => r.it.id);
   const dupCount = names.filter((n) => n.dup).length;
   const chips: { k: Filter; label: string; n: number }[] = [
     { k: "all", label: "All", n: items.length },
     { k: "1", label: "Approved", n: stats.ok },
     { k: "2", label: "Approved as noted", n: stats.note },
     { k: "rev", label: "Revise / Not approved", n: stats.rev },
-    { k: "check", label: "Need a check", n: items.filter((it, i) => hasFlag(it, names[i]) || names[i].dup).length },
+    { k: "check", label: "Need a check", n: items.filter((it, i) => isFlagged(it, i)).length },
+    { k: "low", label: "Low confidence", n: confs.filter((c, i) => !items[i].skipped && c.level === "low").length },
+    { k: "multi", label: "Multi-page", n: items.filter((it) => !it.skipped && it.pages > 1).length },
     { k: "dup", label: "Duplicates", n: dupCount },
   ];
-  const openPage = (it: Item) => setViewer({ heading: "Full page 1 of the scan", items: [{ id: it.id, title: it.name, buf: it.buf }] });
+  const openPage = (it: Item) => setViewer({ heading: it.pages > 1 ? `Full scan: all ${it.pages} pages` : "Full page of the scan", items: [{ id: it.id, title: it.name, buf: it.buf, pages: it.pages }] });
   const compare = (it: Item, i: number) => {
     const key = baseName(it, settings);
     const group = items.filter((o) => baseName(o, settings) === key);
     void i;
-    setViewer({ heading: `Compare duplicates: ${group.length} scans with the same name`, items: group.map((o) => ({ id: o.id, title: o.name, buf: o.buf })) });
+    setViewer({ heading: `Compare duplicates: ${group.length} scans with the same name`, items: group.map((o) => ({ id: o.id, title: o.name, buf: o.buf, pages: o.pages })) });
   };
   const sample = names.find((n) => n.name)?.name;
 
@@ -438,8 +597,8 @@ export default function App() {
                   ))}
                 </div>
                 <div className="mb-6 grid gap-3 sm:grid-cols-2">
-                  <button type="button" className={primaryBtn} onClick={verifyClean} disabled={!items.length || busy}>
-                  Verify all clean rows
+                  <button type="button" className={primaryBtn} onClick={verifyClean} disabled={!cleanLeft || busy}>
+                  Verify {cleanLeft} high-confidence rows
                 </button>
                 <button type="button" className={ghostBtn} onClick={() => setFil((f) => (f === "check" ? "all" : "check"))} disabled={!items.length}>
                   {onlyFlag ? "Show all rows" : "Show only rows to check"}
@@ -449,9 +608,16 @@ export default function App() {
                   <h4 className="text-base font-semibold">What to look at</h4>
                   <ul className="grid gap-2 sm:grid-cols-3">
                     <Feature>The red box marks the option the app detected</Feature>
-                    <Feature>Fix any wrong value right inside its row</Feature>
-                    <Feature>Duplicate names get (2) added automatically</Feature>
+                    <Feature>Fix any wrong value right inside its row; every change is saved in its history and can be undone</Feature>
+                    <Feature>Bulk verify only touches high-confidence rows with no warnings. Everything else needs your own tick</Feature>
                   </ul>
+                  <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-mute">
+                    <span className="inline-flex items-center gap-1.5 font-medium text-ink"><Keyboard className="h-4 w-4" /> Shortcuts</span>
+                    <span><kbd>J</kbd>/<kbd>K</kbd> or arrows: next/previous row</span>
+                    <span><kbd>1</kbd> to <kbd>5</kbd>: set the decision</span>
+                    <span><kbd>Enter</kbd>: verify and go to next</span>
+                    <span><kbd>Z</kbd>: undo</span>
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -459,6 +625,13 @@ export default function App() {
           <Card className="overflow-hidden">
             <div className="flex flex-wrap items-center gap-2.5 border-b px-4 py-3">
               <h2 className="mr-auto text-lg font-semibold">Review every file</h2>
+              <label className="flex items-center gap-1.5 text-[12.5px] text-mute">
+                Order
+                <select value={sort} onChange={(e) => setSort(e.target.value as "file" | "risk")} className="!py-1 text-[12.5px]">
+                  <option value="file">File order</option>
+                  <option value="risk">Riskiest first</option>
+                </select>
+              </label>
               <span className="text-[12.5px] text-mute">
                 {items.length} files · {flaggedLeft} still to check
               </span>
@@ -513,7 +686,7 @@ export default function App() {
             </div>
             <div data-testid="rows">
               {shown.map(({ it, nm, i }) => (
-                <ReviewRow key={it.id} it={it} nm={nm} index={i} flagged={hasFlag(it, nm)} onEdit={(p) => edit(it.id, p)} onVerify={(v) => setVerified(it.id, v)} onDownload={() => nm.name && download(new Blob([it.buf], { type: "application/pdf" }), nm.name)} onZoom={() => openPage(it)} onCompare={nm.dup ? () => compare(it, i) : undefined} />
+                <ReviewRow key={it.id} it={it} nm={nm} index={i} flagged={isFlagged(it, i)} conf={confs[i].level} confWhy={confs[i].why} xc={xc[it.id] ?? []} focused={focusId === it.id} onFocus={() => setFocusId(it.id)} onUndo={() => undo(it.id)} onReset={() => resetAuto(it.id)} onEdit={(p) => edit(it.id, p)} onVerify={(v) => setVerified(it.id, v)} onDownload={() => nm.name && download(new Blob([it.buf], { type: "application/pdf" }), nm.name)} onZoom={() => openPage(it)} onCompare={nm.dup ? () => compare(it, i) : undefined} />
               ))}
               {!shown.length && <div className="p-8 text-center text-mute">No rows match. Clear the search or pick "All".</div>}
             </div>
@@ -557,6 +730,9 @@ export default function App() {
                 <button type="button" className={ghostBtn} onClick={downloadCsv} disabled={!items.length}>
                   Download mapping CSV
                 </button>
+                <button type="button" className={ghostBtn} onClick={downloadAudit} disabled={!items.length}>
+                  Download audit log (Excel / CSV)
+                </button>
                 </div>
                 <div className="space-y-3 border-t pt-4">
                   <h4 className="text-base font-semibold">Name example</h4>
@@ -564,7 +740,7 @@ export default function App() {
                   <ul className="space-y-2">
                     <Feature>Need just one file? Use "Download this PDF" on its row in Review files</Feature>
                     <Feature>Your PDFs are only renamed, never changed</Feature>
-                    <Feature>The CSV lists every old and new name</Feature>
+                    <Feature>The ZIP also holds rename_mapping.csv (old name to new name) and audit_log.csv (confidence, edits, who verified and when)</Feature>
                   </ul>
                 </div>
               </CardContent>
@@ -596,7 +772,7 @@ export default function App() {
       <div className="lg:hidden">
         <Dock show={items.length > 0} verified={verified} total={items.length} ready={ready} busy={busy} onZip={downloadZip} />
       </div>
-      <PageViewer items={viewer?.items ?? null} heading={viewer?.heading ?? ""} onClose={closeViewer} />
+      <PageViewer items={viewer?.items ?? null} heading={viewer?.heading ?? ""} onClose={closeViewer} allPages />
     </>
   );
 }

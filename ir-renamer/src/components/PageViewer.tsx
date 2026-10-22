@@ -1,28 +1,31 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { X, ZoomIn, ZoomOut } from "lucide-react";
-import { renderFirstPage } from "@/lib/analyze";
+import { renderAllPages } from "@/lib/analyze";
 import { cn } from "@/lib/utils";
 
 export interface ViewItem {
   id: string;
   title: string;
   buf: ArrayBuffer;
+  pages?: number;
 }
 
-const cache = new Map<string, string>();
+const cache = new Map<string, Promise<string[]>>();
 
-async function pageUrl(v: ViewItem): Promise<string> {
-  const hit = cache.get(v.id);
-  if (hit) return hit;
-  const { canvas } = await renderFirstPage(v.buf);
-  const url = canvas.toDataURL("image/jpeg", 0.88);
-  cache.set(v.id, url);
-  return url;
+/** All pages when `allPages` is on, otherwise only page 1. */
+function pageUrls(v: ViewItem, allPages: boolean): Promise<string[]> {
+  const key = v.id + (allPages ? ":all" : ":1");
+  let hit = cache.get(key);
+  if (!hit) {
+    hit = renderAllPages(v.buf).then((u) => (allPages ? u : u.slice(0, 1)));
+    cache.set(key, hit);
+  }
+  return hit;
 }
 
-export function PageViewer({ items, heading, onClose }: { items: ViewItem[] | null; heading: string; onClose: () => void }) {
-  const [urls, setUrls] = useState<Record<string, string>>({});
+export function PageViewer({ items, heading, onClose, allPages = false }: { items: ViewItem[] | null; heading: string; onClose: () => void; allPages?: boolean }) {
+  const [urls, setUrls] = useState<Record<string, string[]>>({});
   const [zoom, setZoom] = useState(false);
 
   useEffect(() => {
@@ -30,7 +33,7 @@ export function PageViewer({ items, heading, onClose }: { items: ViewItem[] | nu
     setZoom(false);
     let alive = true;
     items.forEach((v) =>
-      pageUrl(v).then((u) => alive && setUrls((x) => ({ ...x, [v.id]: u }))),
+      pageUrls(v, allPages).then((u) => alive && setUrls((x) => ({ ...x, [v.id]: u }))),
     );
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", key);
@@ -40,7 +43,7 @@ export function PageViewer({ items, heading, onClose }: { items: ViewItem[] | nu
       window.removeEventListener("keydown", key);
       document.body.style.overflow = "";
     };
-  }, [items, onClose]);
+  }, [items, onClose, allPages]);
 
   return (
     <AnimatePresence>
@@ -87,11 +90,18 @@ export function PageViewer({ items, heading, onClose }: { items: ViewItem[] | nu
                   <figure key={v.id} className="m-0">
                     <figcaption className="mb-1.5 break-all font-mono text-xs text-mute">{v.title}</figcaption>
                     {urls[v.id] ? (
-                      <img
-                        src={urls[v.id]}
-                        alt={`Page 1 of ${v.title}`}
-                        className={cn("block h-auto rounded-md border bg-white", zoom ? "w-[1654px] max-w-none" : "w-full")}
-                      />
+                      <div className="space-y-3">
+                        {urls[v.id].map((u, pi) => (
+                          <div key={pi}>
+                            {urls[v.id].length > 1 && <div className="mb-1 text-xs font-medium text-revise">Page {pi + 1} of {urls[v.id].length}</div>}
+                            <img
+                              src={u}
+                              alt={`Page ${pi + 1} of ${v.title}`}
+                              className={cn("block h-auto rounded-md border bg-white", zoom ? "w-[1654px] max-w-none" : "w-full")}
+                            />
+                          </div>
+                        ))}
+                      </div>
                     ) : (
                       <div className="grid aspect-[1/1.414] w-full place-items-center rounded-md border bg-panel text-sm text-mute">Loading page…</div>
                     )}

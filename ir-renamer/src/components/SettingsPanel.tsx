@@ -31,6 +31,13 @@ export function SettingsPanel({ settings, onChange, open }: { settings: Settings
             <input type="checkbox" className="h-[17px] w-[17px] accent-[var(--pen)]" checked={settings.folders} onChange={(e) => onChange({ ...settings, folders: e.target.checked })} />
             Put files in folders by decision (in the ZIP)
           </label>
+          <label className="flex items-center gap-2 text-[13px]">
+            <input type="checkbox" className="h-[17px] w-[17px] accent-[var(--pen)]" checked={settings.zipLogs} onChange={(e) => onChange({ ...settings, zipLogs: e.target.checked })} />
+            Add rename_mapping.csv and audit_log.csv inside the ZIP
+          </label>
+          <F label="Your name (written in the audit log next to rows you verify)">
+            <input type="text" className="min-w-[240px]" value={settings.verifier} placeholder="e.g. Tarique" onChange={(e) => onChange({ ...settings, verifier: e.target.value })} />
+          </F>
         </div>
         <div className="mt-4 space-y-4">
           {(Object.keys(LEGENDS) as Legend[]).map((g) => (

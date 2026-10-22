@@ -40,3 +40,13 @@ The form type is detected automatically (you can change it per row in Review):
 - **Sample Material Submittal** – reference is the "Submittal Nr" (revision comes from the `-R1` suffix); status 1–5 is the option enclosed in the blue box.
 
 File-name labels for each form are editable in Settings.
+
+## Safety features (v9)
+
+- **Confidence** on every row (High / Medium / Low / Edited) and an "Order: Riskiest first" option.
+- **Keyboard**: `J`/`K` or arrows move, `1`-`5` set the decision, `Enter` verifies and moves on, `Z` undoes.
+- **Verified lock**: ZIP stays locked until every row is ticked. "Verify high-confidence rows" only ticks rows with no flags and no warnings.
+- **Cross-checks**: same IR ref + revision with a different decision, project code vs form type, submittal vs IR reference, odd revisions, plus the missing-number panel.
+- **Change history** per row with "Undo last change" and "Back to auto-detected".
+- **Audit log** (`audit_log.csv`, opens in Excel) and `rename_mapping.csv` are added inside the ZIP (switch in Settings) and can be downloaded separately.
+- **Multi-page scans**: "N pages · view all" opens every page. Only page 1 is read automatically.
