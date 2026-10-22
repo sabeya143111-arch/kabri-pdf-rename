@@ -70,6 +70,13 @@ export default function App() {
   const previewRef = useRef<HTMLCanvasElement>(null);
   const [view, setView] = useState<View>("upload");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pinned, setPinned] = useState(() => {
+    try { return localStorage.getItem("irPin") === "1"; } catch { return false; }
+  });
+  const setPin = (p: boolean) => {
+    setPinned(p);
+    try { localStorage.setItem("irPin", p ? "1" : "0"); } catch { /* ignore */ }
+  };
   const [restored, setRestored] = useState(false);
   const savedRef = useRef<Map<string, Item>>(new Map());
 
@@ -480,8 +487,8 @@ export default function App() {
 
   return (
     <>
-      <Sidebar view={view} onView={setView} total={items.length} verified={verified} flagged={flaggedLeft} ready={ready} busy={busy} open={menuOpen} onOpen={setMenuOpen} onZip={downloadZip} onTheme={toggleTheme} />
-      <main ref={pageRef} className="relative min-h-screen px-4 pb-28 pt-6 lg:pb-12 lg:pl-[304px] lg:pr-8 lg:pt-10">
+      <Sidebar view={view} onView={setView} total={items.length} verified={verified} flagged={flaggedLeft} ready={ready} busy={busy} open={menuOpen} onOpen={setMenuOpen} pinned={pinned} onPin={setPin} onZip={downloadZip} onTheme={toggleTheme} />
+      <main ref={pageRef} className={cn("relative min-h-screen px-4 pb-28 pt-6 transition-[padding] duration-300 lg:pb-12 lg:pr-8 lg:pt-10", pinned ? "lg:pl-[304px]" : "lg:pl-[84px]")}>
         <div className="mx-auto max-w-6xl">
           {view === "upload" && (
             <div key="upload">
