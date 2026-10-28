@@ -79,7 +79,7 @@ export async function renderFirstPage(buf: ArrayBuffer) {
   const ctx = c.getContext("2d", { willReadFrequently: true })!;
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, c.width, c.height);
-  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  await page.render({ canvasContext: ctx, viewport: vp, intent: "print" }).promise;
   const pages = pdf.numPages;
   void pdf.destroy();
   return { canvas: c, pages };
@@ -551,7 +551,7 @@ export async function renderAllPages(buf: ArrayBuffer, scale = 1.3): Promise<str
     const ctx = c.getContext("2d")!;
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, c.width, c.height);
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    await page.render({ canvasContext: ctx, viewport: vp, intent: "print" }).promise;
     urls.push(c.toDataURL("image/jpeg", 0.85));
   }
   void pdf.destroy();

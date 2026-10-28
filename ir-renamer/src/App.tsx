@@ -17,7 +17,6 @@ import { TimelineContent } from "@/components/ui/timeline-animation";
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal";
 import { LayoutGroup, motion } from "motion/react";
 import { TextRotate } from "@/components/ui/text-rotate";
-import { PillSwitch } from "@/components/PillSwitch";
 import { cn } from "@/lib/utils";
 import { analyse, getWorker } from "@/lib/analyze";
 import { clearSession, loadSession, saveSession } from "@/lib/store";
@@ -86,7 +85,8 @@ export default function App() {
       const raw = localStorage.getItem("irSettings");
       if (raw) {
         const saved = JSON.parse(raw);
-        if (!saved.labels?.ir8797) delete saved.labels; // older saved shape
+        // full names only: drop old saved letter codes (A, B, C...) and the older saved shape
+        if (!saved.labels?.ir8797 || sameLabels(saved.labels, LETTER_LABELS)) delete saved.labels;
         setSettings({ ...DEFAULTS, ...saved });
       }
     } catch { /* ignore */ }
@@ -142,8 +142,6 @@ export default function App() {
   };
   const step = !items.length || busy ? 1 : !ready ? 2 : 3;
   const pageRef = useRef<HTMLDivElement>(null);
-  const mode: "words" | "letters" | null = sameLabels(settings.labels, LETTER_LABELS) ? "letters" : sameLabels(settings.labels, WORD_LABELS) ? "words" : null;
-  const setMode = (m: "words" | "letters") => setSettings((st) => ({ ...st, labels: m === "words" ? WORD_LABELS : LETTER_LABELS }));
 
   /* ---------- processing ---------- */
   const handleFiles = useCallback(
@@ -183,7 +181,7 @@ export default function App() {
           const buf = await p.get();
           setRow(p.id, 38, buf.byteLength);
           let item: Item;
-          if (settings.skipNamed && /^TVD-/i.test(p.name)) {
+          if (settings.skipNamed && /^TVD-/i.test(p.name) && !/-R\d+-[A-E](\s\(\d+\))?\.pdf$/i.test(p.name)) {
             item = { id: p.id, name: p.name, buf, pages: 0, legend: "ir8775", ref: null, rev: null, status: null, flags: [], verified: true, skipped: true };
           } else {
             item = await analyse(p.id, buf, p.name, {
@@ -529,18 +527,6 @@ export default function App() {
           <TimelineContent as="p" animationNum={1} timelineRef={pageRef} customVariants={revealVariants} className="w-[85%] text-sm text-mute md:text-base">
             Drop your Inspection Request scans. The app reads the IR reference, the revision and the engineer's decision from each one, so all you do is confirm and
             download.
-          </TimelineContent>
-          <TimelineContent as="div" animationNum={2} timelineRef={pageRef} customVariants={revealVariants}>
-            <PillSwitch
-              className="w-fit"
-              layoutId="status-style"
-              value={mode}
-              onChange={setMode}
-              options={[
-                { value: "words", label: "Status as words" },
-                { value: "letters", label: "Status as letters", badge: "A to D" },
-              ]}
-            />
           </TimelineContent>
         </article>
               <div className="grid gap-4 py-4">
